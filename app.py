@@ -10,6 +10,7 @@ in views/page_*.py - see that folder for the real logic.
 
 import streamlit as st
 
+from views.auth import check_login, logout_button
 from views.state_init import init_state
 from views.theme import apply_theme
 from views import (
@@ -27,6 +28,9 @@ from views import (
 )
 
 st.set_page_config(page_title="Reco Tool", layout="wide", page_icon="📊")
+
+if not check_login():
+    st.stop()
 
 init_state()
 apply_theme()
@@ -48,6 +52,7 @@ pages = [
 with st.sidebar:
     st.markdown("### Reco Tool")
     st.caption("E-commerce Reconciliation")
+    logout_button()
 
 nav = st.navigation(pages, position="sidebar")
 nav.run()
