@@ -1,0 +1,394 @@
+{
+  "client_name": "ESCA Consumer Health (Wellopia)",
+  "channel_name": "Shopify",
+  "orders": {
+    "label": "Shopify Order report",
+    "order_id_col": [
+      "Name",
+      "Order ID",
+      "Shopify Order ID",
+      "Order Number",
+      "Shopify Order Number"
+    ],
+    "month_col": "Month",
+    "created_at_col": "Created at",
+    "financial_status_col": "Financial Status",
+    "fulfillment_status_col": "Fulfillment Status",
+    "subtotal_col": "Subtotal",
+    "shipping_col": "Shipping",
+    "taxes_col": "Taxes",
+    "total_col": "Total",
+    "mandatory": true,
+    "payment_method_col": "Payment Method"
+  },
+  "delivery_partners": [
+    {
+      "label": "Shiprocket",
+      "order_id_col": [
+        "Order ID",
+        "Name",
+        "Shopify Order ID",
+        "Order Number"
+      ],
+      "status_col": "Status",
+      "delivered_synonyms": [
+        "DELIVERED"
+      ],
+      "rto_synonyms": [
+        "RTO",
+        "RTO DELIVERED",
+        "RTO_DELIVERED"
+      ],
+      "cancelled_synonyms": [
+        "CANCELLED"
+      ],
+      "lost_synonyms": [
+        "LOST"
+      ],
+      "mandatory": true,
+      "delivered_date_col": "Order Delivered Date",
+      "rto_date_col": "RTO Delivered Date"
+    },
+    {
+      "label": "Delhivery",
+      "order_id_col": [
+        "Reference No.",
+        "Order ID",
+        "Name",
+        "Order Number"
+      ],
+      "status_col": "Current Status",
+      "delivered_synonyms": [
+        "DELIVERED"
+      ],
+      "rto_synonyms": [
+        "RTO",
+        "RTO_DELIVERED"
+      ],
+      "cancelled_synonyms": [
+        "CANCELLED"
+      ],
+      "lost_synonyms": [
+        "LOST"
+      ],
+      "mandatory": true,
+      "delivered_date_col": "Delivered Date",
+      "rto_date_col": null
+    },
+    {
+      "label": "Prozo",
+      "order_id_col": [
+        "Shipping Label Id",
+        "Order ID",
+        "Name",
+        "Order Number",
+        "Shopify Order ID"
+      ],
+      "status_col": "Status",
+      "delivered_synonyms": [
+        "DELIVERED"
+      ],
+      "rto_synonyms": [
+        "RTO",
+        "RTO_DELIVERED",
+        "RTO DELIVERED"
+      ],
+      "cancelled_synonyms": [
+        "CANCELLED"
+      ],
+      "lost_synonyms": [
+        "LOST"
+      ],
+      "mandatory": false,
+      "delivered_date_col": "Delivery Date",
+      "rto_date_col": "RTO Delivery Date"
+    },
+    {
+      "label": "Self Delivery / Manual Report",
+      "order_id_col": [
+        "Order ID",
+        "Name",
+        "Shopify Order ID",
+        "Order Number",
+        "Shipping Label Id"
+      ],
+      "status_col": [
+        "Status",
+        "Delivery Status"
+      ],
+      "delivered_synonyms": [
+        "DELIVERED"
+      ],
+      "rto_synonyms": [
+        "RTO",
+        "RTO_DELIVERED",
+        "RTO DELIVERED"
+      ],
+      "cancelled_synonyms": [
+        "CANCELLED"
+      ],
+      "lost_synonyms": [
+        "LOST"
+      ],
+      "mandatory": false,
+      "delivered_date_col": [
+        "Delivery Date",
+        "Delivered Date"
+      ],
+      "rto_date_col": [
+        "RTO Date",
+        "RTO Delivery Date",
+        "RTO Delivered Date"
+      ]
+    },
+    {
+      "label": "Unicommerce",
+      "order_id_col": [
+        "Display Order Code",
+        "Order ID",
+        "Name",
+        "Order Number"
+      ],
+      "status_col": "Shipping Tracking Status",
+      "delivered_synonyms": [
+        "DELIVERED_TO_CUSTOMER"
+      ],
+      "rto_synonyms": [
+        "RTO",
+        "RTO_DELIVERED",
+        "RETURNED"
+      ],
+      "cancelled_synonyms": [
+        "CANCELLED"
+      ],
+      "lost_synonyms": [
+        "LOST"
+      ],
+      "mandatory": true,
+      "delivered_date_col": null,
+      "rto_date_col": "Return Date",
+      "status_col_fallback": "Sale Order Status",
+      "courier_label_col": [
+        "Shipping provider",
+        "Shipping Provider"
+      ]
+    }
+  ],
+  "gateways": [
+    {
+      "label": "Gokwik",
+      "order_id_col": [
+        "Platform Order Id",
+        "Order ID",
+        "Name"
+      ],
+      "amount_col": "Amount",
+      "deduction_cols": [
+        "Tax",
+        "Fee",
+        "gokwik Deduction"
+      ],
+      "type_col": "Transaction Type",
+      "payment_values": [
+        "Payment",
+        "payment"
+      ],
+      "refund_values": [
+        "Refund",
+        "refund"
+      ],
+      "mandatory": true,
+      "settlement_date_col": "Settlement Date",
+      "date_col": "Settlement Date",
+      "payment_mode": "Prepaid",
+      "utr_col": [
+        "Settlement UTR",
+        "UTR"
+      ],
+      "expected_settlement_days": 5
+    },
+    {
+      "label": "Razorpay",
+      "order_id_col": [
+        "Shopify Order No",
+        "Shopify Order ID",
+        "Order ID",
+        "Name"
+      ],
+      "amount_col": "amount",
+      "deduction_cols": [
+        "fee (exclusive tax)",
+        "tax"
+      ],
+      "type_col": "transaction_entity",
+      "payment_values": [
+        "payment"
+      ],
+      "refund_values": [
+        "refund"
+      ],
+      "raw_transform": "razorpay_settlement",
+      "mandatory": true,
+      "settlement_date_col": null,
+      "date_col": "settled_at",
+      "payment_mode": "Prepaid",
+      "utr_col": [
+        "settlement_utr",
+        "UTR"
+      ],
+      "expected_settlement_days": 5
+    },
+    {
+      "label": "Delhivery COD",
+      "order_id_col": [
+        "Order Number",
+        "Order ID",
+        "Name"
+      ],
+      "amount_col": "COD Amount",
+      "deduction_cols": [],
+      "type_col": null,
+      "payment_values": [],
+      "refund_values": [],
+      "mandatory": true,
+      "settlement_date_col": "DATE",
+      "date_col": "DATE",
+      "payment_mode": "COD",
+      "utr_col": [
+        "BANK's TRANSACTION ID",
+        "UTR"
+      ],
+      "expected_settlement_days": 12
+    },
+    {
+      "label": "Shiprocket COD",
+      "order_id_col": [
+        "Order Id",
+        "Order ID",
+        "Name"
+      ],
+      "amount_col": "COD Available - Line Allocation",
+      "deduction_cols": [
+        "Freight Charges - Line Allocation"
+      ],
+      "type_col": null,
+      "payment_values": [],
+      "refund_values": [],
+      "sheet_hint": "ShiprocketAWB level report",
+      "raw_transform": "shiprocket_cod",
+      "mandatory": true,
+      "settlement_date_col": "Remittance Date",
+      "date_col": "Remittance Date",
+      "payment_mode": "COD",
+      "utr_col": [
+        "UTR",
+        "UTR No"
+      ],
+      "settled_status_col": "Remittance Status",
+      "settled_values": [
+        "Remittance success"
+      ],
+      "expected_settlement_days": 12
+    },
+    {
+      "label": "Prozo COD",
+      "order_id_col": [
+        "Shipping Label OrderId",
+        "Shipping Label Id",
+        "Order ID",
+        "Name"
+      ],
+      "amount_col": "COD Amount",
+      "deduction_cols": [],
+      "type_col": null,
+      "payment_values": [],
+      "refund_values": [],
+      "mandatory": false,
+      "settlement_date_col": "Payment Date",
+      "date_col": "Payment Date",
+      "payment_mode": "COD",
+      "utr_col": [
+        "Payment UTRs",
+        "Payment UTR",
+        "UTR"
+      ],
+      "settled_status_col": "COD Status",
+      "settled_values": [
+        "REMITTED"
+      ],
+      "expected_settlement_days": 12
+    }
+  ],
+  "attribution_sources": [
+    {
+      "label": "Gokwik Order Report",
+      "provider": "Gokwik",
+      "role": "order_report",
+      "order_id_col": [
+        "Shopify Order Name",
+        "Order ID",
+        "Name"
+      ],
+      "payment_id_col": "Payment ID",
+      "payment_method_col": [
+        "Payment Method",
+        "Payment Mode",
+        "Mode of Payment"
+      ],
+      "mandatory": false
+    },
+    {
+      "label": "Gokwik Transaction Report",
+      "provider": "Gokwik",
+      "role": "transaction_report",
+      "payment_id_col": "Payment ID",
+      "payment_provider_col": "Payment Provider",
+      "mandatory": false
+    }
+  ],
+  "sku_source": {
+    "label": "Unicommerce",
+    "order_id_col": [
+      "Display Order Code",
+      "Order ID",
+      "Name",
+      "Order Number"
+    ],
+    "sku_col": "SKU Name"
+  },
+  "bank_statement": {
+    "label": "Bank Statement",
+    "mandatory": false,
+    "utr_col": [
+      "UTR",
+      "UTR No",
+      "UTR Number",
+      "Reference No",
+      "Reference Number",
+      "Cheque No./Ref No",
+      "Ref No"
+    ],
+    "amount_col": [
+      "Credit",
+      "Credit Amount",
+      "Deposit Amt",
+      "Deposit Amount",
+      "Deposit",
+      "Amount"
+    ],
+    "date_col": [
+      "Value Date",
+      "Txn Date",
+      "Transaction Date",
+      "Date"
+    ],
+    "narration_col": [
+      "Narration",
+      "Narrative",
+      "Description",
+      "Particulars",
+      "Transaction Remarks",
+      "Transaction Details"
+    ]
+  }
+}

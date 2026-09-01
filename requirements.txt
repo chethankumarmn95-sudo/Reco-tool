@@ -1,0 +1,6 @@
+pandas
+openpyxl
+streamlit
+plotly
+python-calamine
+xlrd>=2.0.1

@@ -1,0 +1,91 @@
+{
+  "client_name": "ESCA Consumer Health (Wellopia)",
+  "channel_name": "Amazon",
+  "channel_type": "marketplace",
+
+  "mtr_reports": [
+    { "label": "MTR B2C Report", "segment": "B2C", "mandatory": true },
+    { "label": "MTR B2B Report", "segment": "B2B", "mandatory": false }
+  ],
+
+  "mtr_columns": {
+    "order_id_col": ["Order Id", "Order ID"],
+    "sku_col": ["Sku", "SKU"],
+    "transaction_type_col": "Transaction Type",
+    "shipment_values": ["Shipment"],
+    "refund_values": ["Refund"],
+    "cancel_values": ["Cancel"],
+    "free_replacement_values": ["FreeReplacement", "Free Replacement"],
+    "invoice_number_col": "Invoice Number",
+    "invoice_date_col": "Invoice Date",
+    "order_date_col": "Order Date",
+    "shipment_date_col": "Shipment Date",
+    "quantity_col": "Quantity",
+    "invoice_amount_col": "Invoice Amount",
+    "taxable_col": ["Tax Exclusive Gross"],
+    "tax_amount_col": ["Total Tax Amount"],
+    "principal_amount_col": ["Principal Amount"],
+    "shipping_amount_col": ["Shipping Amount"],
+    "item_promo_discount_col": ["Item Promo Discount"],
+    "shipping_promo_discount_col": ["Shipping Promo Discount"],
+    "tcs_cols": ["Tcs Cgst Amount", "Tcs Sgst Amount", "Tcs Igst Amount", "Tcs Utgst Amount"],
+    "payment_method_col": ["Payment Method Code", "Payment Method"],
+    "cod_values": ["COD"],
+    "fulfillment_channel_col": ["Fulfillment Channel"],
+    "warehouse_id_col": ["Warehouse Id"],
+    "credit_note_no_col": ["Credit Note No"],
+    "credit_note_date_col": ["Credit Note Date"],
+    "asin_col": ["Asin", "ASIN"],
+    "item_description_col": ["Item Description"]
+  },
+
+  "settlement_files": [
+    { "label": "Settlement Flat File - COD", "payment_mode": "COD", "mandatory": true },
+    { "label": "Settlement Flat File - Online", "payment_mode": "Online", "mandatory": true }
+  ],
+
+  "settlement_columns": {
+    "settlement_id_col": "settlement-id",
+    "settlement_start_col": "settlement-start-date",
+    "settlement_end_col": "settlement-end-date",
+    "deposit_date_col": "deposit-date",
+    "total_amount_col": "total-amount",
+    "currency_col": "currency",
+    "transaction_type_col": "transaction-type",
+    "order_id_col": "order-id",
+    "merchant_order_id_col": "merchant-order-id",
+    "adjustment_id_col": "adjustment-id",
+    "shipment_id_col": "shipment-id",
+    "marketplace_col": "marketplace-name",
+    "fulfillment_id_col": "fulfillment-id",
+    "posted_date_col": "posted-date",
+    "sku_col": "sku",
+    "quantity_col": "quantity-purchased",
+    "amount_type_pairs": [
+      ["price-amount", "price-type"],
+      ["item-related-fee-amount", "item-related-fee-type"],
+      ["shipment-fee-amount", "shipment-fee-type"],
+      ["order-fee-amount", "order-fee-type"],
+      ["promotion-amount", "promotion-type"],
+      ["direct-payment-amount", "direct-payment-type"],
+      ["other-fee-amount", "other-fee-reason-description"],
+      ["misc-fee-amount", null],
+      ["other-amount", null]
+    ],
+    "fallback_label_priority": ["item-related-fee-type", "other-fee-reason-description"],
+    "revenue_price_types": ["Principal", "Product Tax", "Shipping", "Shipping tax", "Gift Wrap"],
+    "tax_collection_price_types": ["TDS (Section 194-O)", "TCS-CGST", "TCS-SGST", "TCS-IGST", "TCS-UTGST"]
+  },
+
+  "bank_statement": {
+    "label": "Bank Statement",
+    "mandatory": false,
+    "utr_col": ["UTR", "UTR No", "UTR Number", "Reference No", "Reference Number", "Cheque No./Ref No", "Ref No", "Chq /Ref No.", "Chq/Ref No."],
+    "date_col": ["Value Date", "Txn Date", "Transaction Date", "Date"],
+    "narration_col": ["Narration", "Narrative", "Description", "Particulars", "Transaction Remarks", "Transaction Details"],
+    "amount_col": ["Credit", "Credit Amount", "Deposit Amt", "Deposit Amount", "Deposit", "Amount"],
+    "debit_col": ["Withdrawal (Dr)", "Withdrawal", "Debit", "Debit Amount"],
+    "credit_indicator_col": ["Dr / Cr", "Dr/Cr", "Cr/Dr", "Type"],
+    "credit_indicator_values": ["CR", "C", "CREDIT"]
+  }
+}
