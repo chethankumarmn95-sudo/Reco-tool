@@ -13,6 +13,7 @@ import streamlit as st
 from views.auth import check_login, logout_button
 from views.state_init import init_state
 from views.theme import apply_theme
+from views import page_portal
 from views import (
     page_dashboard,
     page_upload,
@@ -35,6 +36,17 @@ if not check_login():
 init_state()
 apply_theme()
 
+# The Authorised Portal hub - shown right after login, before any tool.
+# Structured so more tools can be added here later without touching the
+# login flow or the Reconciliation Tool's own navigation below.
+if not st.session_state.get("entered_portal"):
+    page_portal.render()
+    with st.sidebar:
+        st.markdown("### Reco Tool")
+        st.caption("E-commerce Reconciliation")
+        logout_button()
+    st.stop()
+
 pages = [
     st.Page(page_dashboard.render, title="Dashboard", icon="🏠", default=True, url_path="dashboard"),
     st.Page(page_upload.render, title="Upload Data", icon="📤", url_path="upload-data"),
@@ -52,6 +64,9 @@ pages = [
 with st.sidebar:
     st.markdown("### Reco Tool")
     st.caption("E-commerce Reconciliation")
+    if st.button("‹ Back to Portal", use_container_width=True):
+        st.session_state["entered_portal"] = False
+        st.rerun()
     logout_button()
 
 nav = st.navigation(pages, position="sidebar")
