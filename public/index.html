@@ -1,207 +1,756 @@
-RecoMatrix
-Solutions
-Features
-How it works
-Security
-Login
-Access Portal
-Financial Reconciliation & MIS Platform
-Every rupee,
-reconciled.
-RecoMatrix pulls your orders, payments, settlements and refunds into one ledger, matches them automatically across every channel and bank, and shows you exactly where the money is — and where it isn’t.
+<title>RecoMatrix</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#F6F4EE;
+    --surface:#FFFFFF;
+    --surface-2:#EDE9DD;
+    --ink:#14201F;
+    --ink-soft:#4B5654;
+    --ink-faint:#7C8785;
+    --line:rgba(20,32,31,0.13);
+    --line-strong:rgba(20,32,31,0.24);
+    --accent:#A97E14;
+    --accent-strong:#8E6A10;
+    --accent-tint:rgba(169,126,20,0.12);
+    --accent-ink:#14201F;
+    --teal:#1F7A63;
+    --teal-tint:rgba(31,122,99,0.12);
+    --critical:#A5433B;
+    --critical-tint:rgba(165,67,59,0.12);
+    --shadow: 0 1px 2px rgba(20,32,31,0.06), 0 12px 32px -16px rgba(20,32,31,0.22);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0E1B1A;
+      --surface:#142524;
+      --surface-2:#0A1514;
+      --ink:#F2EEE3;
+      --ink-soft:#B9C3C0;
+      --ink-faint:#7E8B88;
+      --line:rgba(242,238,227,0.13);
+      --line-strong:rgba(242,238,227,0.24);
+      --accent:#DCB454;
+      --accent-strong:#EAC876;
+      --accent-tint:rgba(220,180,84,0.14);
+      --accent-ink:#14201F;
+      --teal:#54D8B8;
+      --teal-tint:rgba(84,216,184,0.14);
+      --critical:#E58076;
+      --critical-tint:rgba(229,128,118,0.14);
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 20px 44px -20px rgba(0,0,0,0.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0E1B1A;
+    --surface:#142524;
+    --surface-2:#0A1514;
+    --ink:#F2EEE3;
+    --ink-soft:#B9C3C0;
+    --ink-faint:#7E8B88;
+    --line:rgba(242,238,227,0.13);
+    --line-strong:rgba(242,238,227,0.24);
+    --accent:#DCB454;
+    --accent-strong:#EAC876;
+    --accent-tint:rgba(220,180,84,0.14);
+    --accent-ink:#14201F;
+    --teal:#54D8B8;
+    --teal-tint:rgba(84,216,184,0.14);
+    --critical:#E58076;
+    --critical-tint:rgba(229,128,118,0.14);
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 20px 44px -20px rgba(0,0,0,0.6);
+  }
 
-Access Portal
-Explore the platform
-RecoMatrix
-Dashboard
-Reconciliation
-Orders Overview
-RTO & Refunds
-Bank / UTR Linking
-Reports
-Exceptions
-MIS & Analytics
-Dashboard Overview
-01 APR–31 JUL · SAMPLE
-Total Orders
-1,24,580
-Net Settlement
-₹12.45L
-Bank Credits
-₹12.35L
-Exceptions
-2,345
-Settlement trend
-Match rate
-Reconciles data across
-Shopify
-Amazon
-Flipkart
-Tata 1mg
-First Cry
-Shiprocket
-Delhivery
-Razorpay
-Bank statements
-01 — Our Solutions
-One ledger for every part of the money trail.
-01
-E-commerce Reconciliation
-Orders from Shopify, Amazon, Flipkart and marketplace channels matched line-by-line against what was actually delivered and paid.
-02
-Payment & Bank Reconciliation
-Gateway settlements, UTRs and bank credits linked back to the order that generated them, automatically.
-03
-Settlement Reconciliation
-Marketplace and COD settlement reports checked against dispatch and delivery data to surface true payouts.
-04
-Order & Delivery Reconciliation
-Delivery-partner status — delivered, RTO, lost, cancelled — reconciled against order and payment state.
-05
-Receivables Tracking
-Pending amounts and ageing receivables tracked per order, per channel, until they’re actually collected.
-06
-MIS & Financial Analytics
-Board-ready summaries — gross value, net settlement, deduction breakdowns — generated straight from reconciled data.
-07
-Exception & Pending Reports
-Every order that doesn’t tie out gets flagged with a reason, so nothing is written off without being looked at.
-02 — Key Features
-Built for the way reconciliation actually happens.
-Automated reconciliation
-Matching runs on a schedule, not on someone remembering to open a spreadsheet.
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto;} *{animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important;} }
 
-Multi-platform integration
-Marketplaces, D2C storefronts, delivery partners and payment gateways, one intake.
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:"IBM Plex Sans", system-ui, sans-serif;
+    font-size:16px; line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{ background:var(--accent-tint); color:var(--ink); }
 
-Bank & settlement matching
-UTRs and settlement lines matched to orders down to the rupee.
+  .mono{ font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums; }
+  .serif{ font-family:"Instrument Serif", Georgia, serif; }
 
-Exception identification
-Anything that doesn’t tie out is labelled with why, not just flagged red.
+  .eyebrow{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:0.72rem; letter-spacing:0.14em; text-transform:uppercase;
+    color:var(--accent-strong); font-weight:500;
+  }
 
-Live dashboards
-Reconciled, pending and exception totals update as new data lands.
+  h1,h2,h3{ font-family:"Instrument Serif", Georgia, serif; font-weight:400; margin:0; text-wrap:balance; color:var(--ink); }
+  h1{ font-size:clamp(2.6rem, 4.6vw, 4.4rem); line-height:1.04; letter-spacing:-0.01em; }
+  h2{ font-size:clamp(1.9rem, 3vw, 2.7rem); line-height:1.1; }
+  h3{ font-size:1.35rem; line-height:1.25; }
+  p{ margin:0; color:var(--ink-soft); }
+  a{ color:inherit; }
 
-Detailed MIS reporting
-Formatted, presentation-ready workbooks — not raw exports.
+  .wrap{ max-width:1180px; margin:0 auto; padding:0 32px; }
+  @media (max-width:640px){ .wrap{ padding:0 20px; } }
 
-Secure access
-Every visitor authenticates before any figure is rendered.
+  section{ position:relative; }
+  .section-pad{ padding:104px 0; }
+  @media (max-width:780px){ .section-pad{ padding:72px 0; } }
 
-Multiple platform support
-New channels and delivery partners are added as configuration, not rebuilds.
+  .rule{ border:none; border-top:1px solid var(--line); margin:0; }
 
-03 — How It Works
-Five steps from raw export to reconciled ledger.
-1
-Upload data
-Order, payment, delivery and bank files — per channel, per period.
+  /* ---------- buttons ---------- */
+  .btn{
+    display:inline-flex; align-items:center; gap:8px;
+    font-family:"IBM Plex Sans", sans-serif; font-weight:600; font-size:0.95rem;
+    padding:13px 24px; border-radius:3px; border:1px solid transparent;
+    cursor:pointer; text-decoration:none; white-space:nowrap;
+    transition:transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, border-color .15s ease;
+  }
+  .btn:active{ transform:translateY(1px); }
+  .btn-primary{ background:var(--accent); color:var(--accent-ink); }
+  .btn-primary:hover{ background:var(--accent-strong); box-shadow:var(--shadow); }
+  .btn-ghost{ background:transparent; color:var(--ink); border-color:var(--line-strong); }
+  .btn-ghost:hover{ border-color:var(--ink); }
+  .btn-sm{ padding:9px 16px; font-size:0.85rem; }
+  .btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
 
-2
-Automated processing
-Formats are normalised and duplicates removed before anything is matched.
+  /* ---------- nav ---------- */
+  .nav{
+    position:sticky; top:0; z-index:40;
+    background:color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid transparent;
+    transition:border-color .2s ease, background .2s ease;
+  }
+  .nav.is-scrolled{ border-bottom-color:var(--line); }
+  .nav-inner{ display:flex; align-items:center; justify-content:space-between; padding:18px 0; }
+  .brand{ display:flex; align-items:center; gap:10px; text-decoration:none; }
+  .brand-mark{ width:30px; height:30px; flex:none; }
+  .brand-word{ font-family:"Instrument Serif", serif; font-style:italic; font-size:1.32rem; color:var(--ink); }
+  .nav-links{ display:flex; align-items:center; gap:30px; list-style:none; margin:0; padding:0; }
+  .nav-links a{ font-size:0.89rem; color:var(--ink-soft); text-decoration:none; }
+  .nav-links a:hover{ color:var(--ink); }
+  .nav-cta{ display:flex; align-items:center; gap:12px; }
+  .nav-toggle{ display:none; background:none; border:1px solid var(--line-strong); border-radius:3px; width:38px; height:38px; align-items:center; justify-content:center; color:var(--ink); }
+  @media (max-width:900px){
+    .nav-links{ display:none; }
+    .nav-toggle{ display:inline-flex; }
+  }
 
-3
-Intelligent matching
-Orders are linked to receipts, settlements and delivery outcomes.
+  /* ---------- hero ---------- */
+  .hero{ padding:76px 0 96px; }
+  .hero-grid{ display:grid; grid-template-columns:1.05fr 0.95fr; gap:64px; align-items:center; }
+  @media (max-width:960px){ .hero-grid{ grid-template-columns:1fr; gap:56px; } }
+  .hero-copy > *+*{ margin-top:20px; }
+  .hero-copy h1{ margin-top:14px; }
+  .hero-copy p.lede{ font-size:1.1rem; max-width:46ch; }
+  .hero-actions{ display:flex; gap:14px; flex-wrap:wrap; margin-top:32px; }
+  .hero-channels{ margin-top:44px; padding-top:22px; border-top:1px solid var(--line); }
+  .hero-channels .label{ font-size:0.76rem; color:var(--ink-faint); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:12px; display:block; }
+  .channel-row{ display:flex; flex-wrap:wrap; gap:10px 22px; font-family:"IBM Plex Mono", monospace; font-size:0.86rem; color:var(--ink-soft); }
 
-4
-Exceptions surfaced
-Anything unmatched is isolated with a reason, not buried.
+  @keyframes rise{ from{ opacity:0; transform:translateY(14px);} to{ opacity:1; transform:translateY(0);} }
+  .hero-copy{ animation:rise .7s ease both; }
+  .hero-visual{ animation:rise .8s ease .12s both; }
 
-5
-Reports & insight
-Dashboards and MIS workbooks, ready to share.
+  /* ---------- reconciliation ticket ---------- */
+  .ticket{
+    background:var(--surface); border:1px solid var(--line); border-radius:6px;
+    padding:28px 26px 24px; box-shadow:var(--shadow); position:relative; overflow:hidden;
+  }
+  .ticket::before{ content:""; position:absolute; inset:0 0 auto 0; height:4px; background:linear-gradient(90deg, var(--accent), var(--teal)); }
+  .ticket-head{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:18px; }
+  .ticket-head .t-name{ font-family:"Instrument Serif", serif; font-size:1.1rem; }
+  .ticket-head .t-tag{ font-family:"IBM Plex Mono", monospace; font-size:0.68rem; color:var(--ink-faint); letter-spacing:0.08em; }
+  .ticket-row{ display:flex; justify-content:space-between; align-items:baseline; padding:9px 0; border-bottom:1px dashed var(--line); font-size:0.92rem; }
+  .ticket-row .k{ color:var(--ink-soft); }
+  .ticket-row .v{ font-family:"IBM Plex Mono", monospace; font-variant-numeric:tabular-nums; color:var(--ink); }
+  .ticket-row.neg .v{ color:var(--critical); }
+  .ticket-row.total{ border-bottom:none; padding-top:14px; margin-top:4px; border-top:1px solid var(--line-strong); }
+  .ticket-row.total .k{ font-weight:600; color:var(--ink); }
+  .ticket-row.total .v{ font-weight:600; font-size:1.05rem; color:var(--teal); }
+  .stamp{
+    position:absolute; right:22px; bottom:20px; width:104px; height:104px;
+    border:2px dashed var(--teal); border-radius:50%; color:var(--teal);
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    transform:rotate(-11deg); font-family:"IBM Plex Mono", monospace; font-size:0.62rem;
+    letter-spacing:0.09em; font-weight:600; line-height:1.3; opacity:0.9;
+  }
+  .ticket-foot{ margin-top:18px; font-size:0.72rem; color:var(--ink-faint); }
 
-04 — Platform Preview
-What lands on your dashboard.
-recomatrix.com/portal/reconciliation/dashboard
-Total Orders
-4,812
-Reconciled Amount
-₹1.42 Cr
-Net Settlement
-₹1.31 Cr
-Open Exceptions
-37
-Net settlement by month
-Apr
-May
-Jun
-Jul
-Aug
-Sep
-Reconciliation status
-Reconciled — 82%
-Pending — 18%
-Reconciliation details
-Order ID	Channel	Order Value	Receipt	Status
-SF-88213	Shopify	₹2,340	₹2,340	Reconciled
-AM-51092	Amazon	₹1,180	₹1,062	Pending
-FK-70441	Flipkart	₹3,650	₹0	Exception
-SF-88214	Shopify	₹960	₹960	Reconciled
-AM-51093	Amazon	₹4,210	₹4,210	Reconciled
-Exception report
-Order ID	Channel	Exception type	Reason	Status
-FK-70441	Flipkart	RTO	Refund pending	Open
-SF-88221	Shopify	Payment mismatch	Gateway short by ₹40	Open
-AM-51101	Amazon	Bank not credited	Awaiting UTR match	Tracking
-SF-88190	Shopify	Order mismatch	Duplicate order ID	Resolved
+  /* ---------- generic section headers ---------- */
+  .sec-head{ max-width:640px; margin-bottom:52px; }
+  .sec-head > *+*{ margin-top:12px; }
+  .sec-head.center{ margin-left:auto; margin-right:auto; text-align:center; }
 
+  /* ---------- solutions (ledger index) ---------- */
+  .solutions{ background:var(--surface-2); }
+  .index-list{ border-top:1px solid var(--line-strong); }
+  .index-item{
+    display:grid; grid-template-columns:64px 1fr 1.3fr; gap:24px; align-items:start;
+    padding:26px 0; border-bottom:1px solid var(--line);
+  }
+  @media (max-width:720px){ .index-item{ grid-template-columns:40px 1fr; } .index-item .idx-desc{ grid-column:1 / -1; padding-left:0; } }
+  .index-item .idx-no{ font-family:"IBM Plex Mono", monospace; color:var(--ink-faint); font-size:0.85rem; padding-top:4px; }
+  .index-item .idx-name{ font-family:"Instrument Serif", serif; font-size:1.3rem; }
+  .index-item .idx-desc{ font-size:0.92rem; color:var(--ink-soft); }
 
+  /* ---------- features ---------- */
+  .feat-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line); border:1px solid var(--line); }
+  @media (max-width:860px){ .feat-grid{ grid-template-columns:repeat(2,1fr); } }
+  @media (max-width:520px){ .feat-grid{ grid-template-columns:1fr; } }
+  .feat-cell{ background:var(--bg); padding:28px 24px; }
+  .feat-cell svg{ width:22px; height:22px; color:var(--accent); margin-bottom:16px; }
+  .feat-cell h3{ font-size:1.02rem; font-family:"IBM Plex Sans"; font-weight:600; margin-bottom:8px; }
+  .feat-cell p{ font-size:0.87rem; }
 
-Illustrative sample data — shown for layout only
+  /* ---------- how it works ---------- */
+  .steps{ display:grid; grid-template-columns:repeat(5,1fr); gap:0; position:relative; }
+  @media (max-width:900px){ .steps{ grid-template-columns:1fr 1fr; gap:32px 20px; } }
+  @media (max-width:520px){ .steps{ grid-template-columns:1fr; } }
+  .step{ padding-right:22px; }
+  .step .s-no{ font-family:"Instrument Serif", serif; font-style:italic; font-size:2.1rem; color:var(--accent); }
+  .step h3{ font-size:1.02rem; font-family:"IBM Plex Sans"; font-weight:600; margin:10px 0 8px; }
+  .step p{ font-size:0.86rem; }
+  .steps-rule{ display:flex; }
+  .steps-rule .seg{ flex:1; height:1px; background:var(--line-strong); align-self:center; margin:0 -22px 0 0; }
 
-05 — Why Choose RecoMatrix
-Less manual matching. More certainty in the numbers.
-Reconciliation shouldn’t be the reason the books close late.
-— RecoMatrix design principle
-Reduce manual reconciliation
-Matching that took days runs unattended.
-Improve accuracy
-Every rupee is traced to its source, not estimated.
-Centralise financial data
-Every channel and bank statement, one place to look.
-Improve visibility & control
-See what’s reconciled and what still needs attention, today.
-06 — Security
-The public site and the ledger are two different rooms.
-No visitor sees a single figure until they’ve signed in. What’s reconciled stays behind the door.
+  /* ---------- platform preview (dashboard mock) ---------- */
+  .preview{ background:var(--surface-2); }
+  .device{
+    background:var(--surface); border:1px solid var(--line); border-radius:8px; overflow:hidden; box-shadow:var(--shadow);
+  }
+  .device-bar{ display:flex; align-items:center; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .device-bar .dot{ width:9px; height:9px; border-radius:50%; background:var(--line-strong); }
+  .device-bar .url{ margin-left:12px; font-family:"IBM Plex Mono", monospace; font-size:0.72rem; color:var(--ink-faint); }
+  .device-body{ padding:26px 26px 30px; }
+  .kpi-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px; }
+  @media (max-width:760px){ .kpi-row{ grid-template-columns:1fr 1fr; } }
+  .kpi{ border:1px solid var(--line); border-radius:5px; padding:14px 16px; }
+  .kpi .kl{ font-size:0.7rem; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink-faint); }
+  .kpi .kv{ font-family:"IBM Plex Mono", monospace; font-size:1.24rem; margin-top:6px; color:var(--ink); }
+  .kpi .kv.good{ color:var(--teal); }
+  .chart-row{ display:grid; grid-template-columns:1.5fr 1fr; gap:16px; }
+  @media (max-width:760px){ .chart-row{ grid-template-columns:1fr; } }
+  .panel{ border:1px solid var(--line); border-radius:5px; padding:18px; }
+  .panel .pl{ font-size:0.76rem; color:var(--ink-soft); margin-bottom:14px; font-weight:600; }
+  .bars{ display:flex; align-items:flex-end; gap:10px; height:110px; }
+  .bars .bar{ flex:1; background:var(--accent-tint); border-top:2px solid var(--accent); border-radius:2px 2px 0 0; position:relative; }
+  .bars .bar span{ position:absolute; bottom:-20px; left:0; right:0; text-align:center; font-family:"IBM Plex Mono",monospace; font-size:0.62rem; color:var(--ink-faint); }
+  .donut-wrap{ display:flex; align-items:center; justify-content:center; gap:18px; }
+  .donut-legend{ font-size:0.78rem; }
+  .donut-legend div{ display:flex; align-items:center; gap:8px; margin:6px 0; }
+  .donut-legend .sw{ width:9px; height:9px; border-radius:2px; }
+  .preview-note{ text-align:center; margin-top:18px; font-size:0.76rem; color:var(--ink-faint); font-family:"IBM Plex Mono",monospace; }
 
-Secure authentication
-Every session starts with a verified sign-in, no exceptions.
+  /* ---------- why / quote ---------- */
+  .why-grid{ display:grid; grid-template-columns:1fr 1fr; gap:64px; align-items:start; }
+  @media (max-width:860px){ .why-grid{ grid-template-columns:1fr; gap:40px; } }
+  .why-list{ list-style:none; margin:0; padding:0; }
+  .why-list li{ display:flex; gap:14px; padding:16px 0; border-bottom:1px solid var(--line); }
+  .why-list li:first-child{ border-top:1px solid var(--line); }
+  .why-list svg{ width:18px; height:18px; color:var(--teal); flex:none; margin-top:3px; }
+  .why-list .wt{ font-weight:600; font-size:0.94rem; color:var(--ink); }
+  .why-list .wd{ font-size:0.85rem; margin-top:3px; }
+  .pull{ border-left:2px solid var(--accent); padding-left:24px; }
+  .pull q{ font-family:"Instrument Serif", serif; font-style:italic; font-size:1.5rem; line-height:1.35; color:var(--ink); quotes:none; }
+  .pull .attrib{ margin-top:16px; font-family:"IBM Plex Mono", monospace; font-size:0.78rem; color:var(--ink-faint); }
 
-Authorised access only
-Accounts are issued individually; there is no public sign-up.
+  /* ---------- security ---------- */
+  .security{ background:var(--ink); color:var(--bg); }
+  :root[data-theme="dark"] .security, :root:not([data-theme="light"]) .security{ background:var(--surface-2); }
+  .security .eyebrow{ color:var(--accent); }
+  .security h2{ color:var(--bg); }
+  :root[data-theme="dark"] .security h2, :root:not([data-theme="light"]) .security h2{ color:var(--ink); }
+  .security p{ color:rgba(246,244,238,0.68); }
+  :root[data-theme="dark"] .security p, :root:not([data-theme="light"]) .security p{ color:var(--ink-soft); }
+  .sec-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:rgba(246,244,238,0.14); margin-top:48px; }
+  :root[data-theme="dark"] .sec-grid, :root:not([data-theme="light"]) .sec-grid{ background:var(--line); }
+  @media (max-width:860px){ .sec-grid{ grid-template-columns:1fr 1fr; } }
+  @media (max-width:520px){ .sec-grid{ grid-template-columns:1fr; } }
+  .sec-cell{ background:var(--ink); padding:26px 22px; }
+  :root[data-theme="dark"] .sec-cell, :root:not([data-theme="light"]) .sec-cell{ background:var(--surface-2); }
+  .sec-cell svg{ width:20px; height:20px; color:var(--accent); margin-bottom:14px; }
+  .sec-cell h3{ color:var(--bg); font-family:"IBM Plex Sans"; font-weight:600; font-size:0.96rem; margin-bottom:6px; }
+  :root[data-theme="dark"] .sec-cell h3, :root:not([data-theme="light"]) .sec-cell h3{ color:var(--ink); }
+  .sec-cell p{ font-size:0.83rem; color:rgba(246,244,238,0.62); }
+  :root[data-theme="dark"] .sec-cell p, :root:not([data-theme="light"]) .sec-cell p{ color:var(--ink-soft); }
 
-Data privacy
-Reconciliation data is never surfaced on the public site, in any form.
+  /* ---------- final cta ---------- */
+  .final-cta{ text-align:center; }
+  .final-cta h2{ max-width:16ch; margin:0 auto; }
+  .final-cta p{ max-width:44ch; margin:18px auto 0; }
+  .final-cta .btn{ margin-top:32px; }
 
-Role-based access
-Each account sees only the tools and data it’s permitted to.
+  /* ---------- footer ---------- */
+  footer{ border-top:1px solid var(--line); padding:40px 0; }
+  .foot-row{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; }
+  .foot-row .brand-word{ font-size:1.1rem; }
+  .foot-links{ display:flex; gap:22px; list-style:none; padding:0; margin:0; font-size:0.82rem; color:var(--ink-soft); }
+  .foot-copy{ font-size:0.76rem; color:var(--ink-faint); margin-top:22px; font-family:"IBM Plex Mono",monospace; }
 
-Ready when you are
-Bring your financial data together. Reconcile smarter.
-Sign in to the portal, or reach out for access.
+  /* ---------- trusted strip ---------- */
+  .trusted{ border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:30px 0; }
+  .trusted-row{ display:flex; align-items:center; gap:38px; flex-wrap:wrap; }
+  .trusted-row .tl{ font-size:0.72rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--ink-faint); font-family:"IBM Plex Mono",monospace; white-space:nowrap; }
+  .trusted-marks{ display:flex; align-items:center; gap:34px; flex-wrap:wrap; flex:1; }
+  .trusted-marks span{ font-family:"IBM Plex Mono",monospace; font-size:0.95rem; font-weight:500; color:var(--ink-soft); opacity:0.8; letter-spacing:0.01em; }
 
-Access Platform
-RecoMatrix
-A private financial reconciliation & MIS platform for e-commerce and D2C finance teams. Access is by authorised account only.
+  /* ---------- hero app mock ---------- */
+  .app-mock{ background:var(--surface); border:1px solid var(--line); border-radius:7px; box-shadow:var(--shadow); overflow:hidden; display:flex; }
+  .app-mock .am-side{ width:132px; flex:none; background:var(--surface-2); border-right:1px solid var(--line); padding:16px 12px; }
+  .app-mock .am-brand{ display:flex; align-items:center; gap:7px; margin-bottom:18px; padding-left:4px; }
+  .app-mock .am-brand svg{ width:16px; height:16px; color:var(--ink); }
+  .app-mock .am-brand span{ font-family:"Instrument Serif",serif; font-style:italic; font-size:0.86rem; }
+  .am-nav{ display:flex; flex-direction:column; gap:2px; }
+  .am-nav div{ font-size:0.68rem; padding:7px 8px; border-radius:3px; color:var(--ink-faint); }
+  .am-nav div.on{ background:var(--accent-tint); color:var(--accent-strong); font-weight:600; }
+  .app-mock .am-main{ flex:1; min-width:0; padding:18px 20px; }
+  .am-topline{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px; }
+  .am-topline .t1{ font-family:"Instrument Serif",serif; font-size:1.05rem; }
+  .am-topline .t2{ font-family:"IBM Plex Mono",monospace; font-size:0.62rem; color:var(--ink-faint); }
+  .am-kpis{ display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin-bottom:14px; }
+  .am-kpi{ border:1px solid var(--line); border-radius:4px; padding:9px 10px; }
+  .am-kpi .l{ font-size:0.58rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-faint); }
+  .am-kpi .v{ font-family:"IBM Plex Mono",monospace; font-size:0.86rem; margin-top:4px; }
+  .am-kpi .v.good{ color:var(--teal); }
+  .am-panels{ display:grid; grid-template-columns:1.3fr 1fr; gap:10px; }
+  .am-panel{ border:1px solid var(--line); border-radius:4px; padding:11px 12px; }
+  .am-panel .pl{ font-size:0.6rem; color:var(--ink-soft); margin-bottom:8px; font-weight:600; }
+  .am-bars{ display:flex; align-items:flex-end; gap:5px; height:52px; }
+  .am-bars b{ flex:1; display:block; background:var(--accent-tint); border-top:2px solid var(--accent); border-radius:1px; }
+  .am-donut{ display:flex; align-items:center; justify-content:center; }
+  @media (max-width:520px){ .app-mock{ flex-direction:column; } .app-mock .am-side{ display:none; } }
 
-Solutions
-E-commerce Reconciliation
-Payment & Bank Reconciliation
-Settlement Reconciliation
-MIS & Financial Analytics
-Platform
-Features
-How it works
-Security
-Login
-Stay Updated
-Product notes and release updates for the RecoMatrix portal.
+  /* ---------- carousel ---------- */
+  .carousel{ position:relative; }
+  .car-track{ overflow:hidden; }
+  .car-slides{ display:flex; transition:transform .45s ease; }
+  .car-slide{ flex:none; width:100%; }
+  .car-nav{ display:flex; align-items:center; justify-content:center; gap:18px; margin-top:22px; }
+  .car-arrow{ width:34px; height:34px; border-radius:50%; border:1px solid var(--line-strong); background:var(--surface); display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--ink); }
+  .car-arrow:hover{ border-color:var(--ink); }
+  .car-dots{ display:flex; gap:8px; }
+  .car-dot{ width:7px; height:7px; border-radius:50%; background:var(--line-strong); cursor:pointer; border:none; padding:0; }
+  .car-dot.on{ background:var(--accent); }
+  .table-mock{ width:100%; border-collapse:collapse; font-size:0.78rem; }
+  .table-mock th{ text-align:left; font-size:0.64rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-faint); font-weight:600; padding:0 10px 10px 0; border-bottom:1px solid var(--line-strong); }
+  .table-mock td{ padding:9px 10px 9px 0; border-bottom:1px solid var(--line); font-family:"IBM Plex Mono",monospace; font-size:0.76rem; white-space:nowrap; }
+  .pill-status{ font-family:"IBM Plex Sans",sans-serif; font-size:0.68rem; padding:3px 9px; border-radius:20px; font-weight:600; }
+  .pill-status.good{ background:var(--teal-tint); color:var(--teal); }
+  .pill-status.bad{ background:var(--critical-tint); color:var(--critical); }
+  .pill-status.wait{ background:var(--surface-2); color:var(--ink-faint); }
 
-you@company.com
-Subscribe
-© 2026 RecoMatrix · A private financial reconciliation & MIS platform
+  /* ---------- footer (expanded) ---------- */
+  .foot-grid{ display:grid; grid-template-columns:1.4fr 1fr 1fr 1.3fr; gap:40px; padding-bottom:40px; border-bottom:1px solid var(--line); }
+  @media (max-width:860px){ .foot-grid{ grid-template-columns:1fr 1fr; row-gap:32px; } }
+  @media (max-width:520px){ .foot-grid{ grid-template-columns:1fr; } }
+  .foot-col .fc-head{ font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-faint); margin-bottom:14px; font-family:"IBM Plex Mono",monospace; }
+  .foot-col ul{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
+  .foot-col a{ font-size:0.86rem; color:var(--ink-soft); text-decoration:none; }
+  .foot-col a:hover{ color:var(--ink); }
+  .foot-about p{ font-size:0.86rem; max-width:32ch; margin-top:10px; }
+  .foot-news .nf{ display:flex; gap:0; margin-top:12px; }
+  .foot-news input{ flex:1; min-width:0; border:1px solid var(--line-strong); border-right:none; border-radius:3px 0 0 3px; padding:10px 12px; font-size:0.84rem; background:var(--surface); color:var(--ink); font-family:"IBM Plex Sans"; }
+  .foot-news button{ border-radius:0 3px 3px 0; padding:10px 16px; }
+</style>
+
+<nav class="nav" id="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top">
+      <svg class="brand-mark" viewBox="0 0 32 32" fill="none"><rect x="0.75" y="0.75" width="30.5" height="30.5" rx="7" stroke="currentColor" stroke-width="1.5"/><path d="M9 16.5L13.6 21L23 10.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="brand-word">RecoMatrix</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#solutions">Solutions</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how">How it works</a></li>
+      <li><a href="#security">Security</a></li>
+    </ul>
+    <div class="nav-cta">
+      <a href="/app/" class="btn btn-ghost btn-sm">Login</a>
+      <a href="/app/" class="btn btn-primary btn-sm">Access Portal</a>
+    </div>
+    <button class="nav-toggle" aria-label="Menu">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 5h14M2 9h14M2 13h14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <span class="eyebrow">Financial Reconciliation &amp; MIS Platform</span>
+      <h1>Every rupee,<br>reconciled.</h1>
+      <p class="lede">RecoMatrix pulls your orders, payments, settlements and refunds into one ledger, matches them automatically across every channel and bank, and shows you exactly where the money is &mdash; and where it isn&rsquo;t.</p>
+      <div class="hero-actions">
+        <a href="/app/" class="btn btn-primary">Access Portal <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7h8M7 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+        <a href="#solutions" class="btn btn-ghost">Explore the platform</a>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="app-mock">
+        <div class="am-side">
+          <div class="am-brand">
+            <svg viewBox="0 0 32 32" fill="none"><rect x="0.75" y="0.75" width="30.5" height="30.5" rx="7" stroke="currentColor" stroke-width="1.5"/><path d="M9 16.5L13.6 21L23 10.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>RecoMatrix</span>
+          </div>
+          <div class="am-nav">
+            <div class="on">Dashboard</div>
+            <div>Reconciliation</div>
+            <div>Orders Overview</div>
+            <div>RTO &amp; Refunds</div>
+            <div>Bank / UTR Linking</div>
+            <div>Reports</div>
+            <div>Exceptions</div>
+            <div>MIS &amp; Analytics</div>
+          </div>
+        </div>
+        <div class="am-main">
+          <div class="am-topline"><span class="t1">Dashboard Overview</span><span class="t2 mono">01 APR&ndash;31 JUL &middot; SAMPLE</span></div>
+          <div class="am-kpis">
+            <div class="am-kpi"><div class="l">Total Orders</div><div class="v">1,24,580</div></div>
+            <div class="am-kpi"><div class="l">Net Settlement</div><div class="v good">&#8377;12.45L</div></div>
+            <div class="am-kpi"><div class="l">Bank Credits</div><div class="v">&#8377;12.35L</div></div>
+            <div class="am-kpi"><div class="l">Exceptions</div><div class="v">2,345</div></div>
+          </div>
+          <div class="am-panels">
+            <div class="am-panel">
+              <div class="pl">Settlement trend</div>
+              <div class="am-bars"><b style="height:44%"></b><b style="height:60%"></b><b style="height:52%"></b><b style="height:72%"></b><b style="height:66%"></b><b style="height:86%"></b></div>
+            </div>
+            <div class="am-panel">
+              <div class="pl">Match rate</div>
+              <div class="am-donut">
+                <svg width="62" height="62" viewBox="0 0 42 42">
+                  <circle cx="21" cy="21" r="15.9" fill="none" stroke="var(--surface-2)" stroke-width="6"/>
+                  <circle cx="21" cy="21" r="15.9" fill="none" stroke="var(--teal)" stroke-width="6" stroke-dasharray="96 100" stroke-dashoffset="25" transform="rotate(-90 21 21)"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section class="trusted">
+  <div class="wrap trusted-row">
+    <span class="tl">Reconciles data across</span>
+    <div class="trusted-marks">
+      <span>Shopify</span><span>Amazon</span><span>Flipkart</span><span>Tata 1mg</span><span>First Cry</span><span>Shiprocket</span><span>Delhivery</span><span>Razorpay</span><span>Bank statements</span>
+    </div>
+  </div>
+</section>
+
+<section class="solutions section-pad" id="solutions">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">01 &mdash; Our Solutions</span>
+      <h2>One ledger for every part of the money trail.</h2>
+    </div>
+    <div class="index-list">
+      <div class="index-item">
+        <span class="idx-no mono">01</span>
+        <span class="idx-name">E-commerce Reconciliation</span>
+        <span class="idx-desc">Orders from Shopify, Amazon, Flipkart and marketplace channels matched line-by-line against what was actually delivered and paid.</span>
+      </div>
+      <div class="index-item">
+        <span class="idx-no mono">02</span>
+        <span class="idx-name">Payment &amp; Bank Reconciliation</span>
+        <span class="idx-desc">Gateway settlements, UTRs and bank credits linked back to the order that generated them, automatically.</span>
+      </div>
+      <div class="index-item">
+        <span class="idx-no mono">03</span>
+        <span class="idx-name">Settlement Reconciliation</span>
+        <span class="idx-desc">Marketplace and COD settlement reports checked against dispatch and delivery data to surface true payouts.</span>
+      </div>
+      <div class="index-item">
+        <span class="idx-no mono">04</span>
+        <span class="idx-name">Order &amp; Delivery Reconciliation</span>
+        <span class="idx-desc">Delivery-partner status &mdash; delivered, RTO, lost, cancelled &mdash; reconciled against order and payment state.</span>
+      </div>
+      <div class="index-item">
+        <span class="idx-no mono">05</span>
+        <span class="idx-name">Receivables Tracking</span>
+        <span class="idx-desc">Pending amounts and ageing receivables tracked per order, per channel, until they&rsquo;re actually collected.</span>
+      </div>
+      <div class="index-item">
+        <span class="idx-no mono">06</span>
+        <span class="idx-name">MIS &amp; Financial Analytics</span>
+        <span class="idx-desc">Board-ready summaries &mdash; gross value, net settlement, deduction breakdowns &mdash; generated straight from reconciled data.</span>
+      </div>
+      <div class="index-item">
+        <span class="idx-no mono">07</span>
+        <span class="idx-name">Exception &amp; Pending Reports</span>
+        <span class="idx-desc">Every order that doesn&rsquo;t tie out gets flagged with a reason, so nothing is written off without being looked at.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section-pad" id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">02 &mdash; Key Features</span>
+      <h2>Built for the way reconciliation actually happens.</h2>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="feat-grid">
+      <div class="feat-cell">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <h3>Automated reconciliation</h3><p>Matching runs on a schedule, not on someone remembering to open a spreadsheet.</p>
+      </div>
+      <div class="feat-cell">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="7" cy="7" r="3" stroke="currentColor" stroke-width="1.6"/><circle cx="17" cy="17" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M9.2 9.2L14.8 14.8" stroke="currentColor" stroke-width="1.6"/></svg>
+        <h3>Multi-platform integration</h3><p>Marketplaces, D2C storefronts, delivery partners and payment gateways, one intake.</p>
+      </div>
+      <div class="feat-cell">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="10" width="16" height="9" rx="1.2" stroke="currentColor" stroke-width="1.6"/><path d="M8 10V7a4 4 0 018 0v3" stroke="currentColor" stroke-width="1.6"/></svg>
+        <h3>Bank &amp; settlement matching</h3><p>UTRs and settlement lines matched to orders down to the rupee.</p>
+      </div>
+      <div class="feat-cell">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l9 16H3l9-16z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 10v4M12 17h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <h3>Exception identification</h3><p>Anything that doesn&rsquo;t tie out is labelled with why, not just flagged red.</p>
+      </div>
+      <div class="feat-cell">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 19V9M11 19V4M18 19v-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <h3>Live dashboards</h3><p>Reconciled, pending and exception totals update as new data lands.</p>
+      </div>
+      <div class="feat-cell">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M6 4h9l4 4v12a1 1 0 01-1 1H6a1 1 0 01-1-1V5a1 1 0 011-1z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 11h8M8 14h8M8 17h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <h3>Detailed MIS reporting</h3><p>Formatted, presentation-ready workbooks &mdash; not raw exports.</p>
+      </div>
+      <div class="feat-cell">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="5" y="10" width="14" height="10" rx="1.4" stroke="currentColor" stroke-width="1.6"/><path d="M8 10V7a4 4 0 118 0v3" stroke="currentColor" stroke-width="1.6"/></svg>
+        <h3>Secure access</h3><p>Every visitor authenticates before any figure is rendered.</p>
+      </div>
+      <div class="feat-cell">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l8 4-8 4-8-4 8-4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 12l8 4 8-4M4 16l8 4 8-4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        <h3>Multiple platform support</h3><p>New channels and delivery partners are added as configuration, not rebuilds.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section-pad" id="how">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">03 &mdash; How It Works</span>
+      <h2>Five steps from raw export to reconciled ledger.</h2>
+    </div>
+    <div class="steps">
+      <div class="step"><span class="s-no">1</span><h3>Upload data</h3><p>Order, payment, delivery and bank files &mdash; per channel, per period.</p></div>
+      <div class="step"><span class="s-no">2</span><h3>Automated processing</h3><p>Formats are normalised and duplicates removed before anything is matched.</p></div>
+      <div class="step"><span class="s-no">3</span><h3>Intelligent matching</h3><p>Orders are linked to receipts, settlements and delivery outcomes.</p></div>
+      <div class="step"><span class="s-no">4</span><h3>Exceptions surfaced</h3><p>Anything unmatched is isolated with a reason, not buried.</p></div>
+      <div class="step"><span class="s-no">5</span><h3>Reports &amp; insight</h3><p>Dashboards and MIS workbooks, ready to share.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="preview section-pad" id="preview">
+  <div class="wrap">
+    <div class="sec-head center">
+      <span class="eyebrow">04 &mdash; Platform Preview</span>
+      <h2>What lands on your dashboard.</h2>
+    </div>
+    <div class="carousel">
+      <div class="device car-track">
+        <div class="device-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url mono" id="carUrl">recomatrix.com/portal/reconciliation/dashboard</span></div>
+        <div class="car-slides" id="carSlides">
+          <div class="car-slide">
+            <div class="device-body">
+              <div class="kpi-row">
+                <div class="kpi"><div class="kl">Total Orders</div><div class="kv">4,812</div></div>
+                <div class="kpi"><div class="kl">Reconciled Amount</div><div class="kv good">&#8377;1.42 Cr</div></div>
+                <div class="kpi"><div class="kl">Net Settlement</div><div class="kv">&#8377;1.31 Cr</div></div>
+                <div class="kpi"><div class="kl">Open Exceptions</div><div class="kv">37</div></div>
+              </div>
+              <div class="chart-row">
+                <div class="panel">
+                  <div class="pl">Net settlement by month</div>
+                  <div class="bars">
+                    <div class="bar" style="height:38%"><span>Apr</span></div>
+                    <div class="bar" style="height:52%"><span>May</span></div>
+                    <div class="bar" style="height:47%"><span>Jun</span></div>
+                    <div class="bar" style="height:66%"><span>Jul</span></div>
+                    <div class="bar" style="height:74%"><span>Aug</span></div>
+                    <div class="bar" style="height:90%"><span>Sep</span></div>
+                  </div>
+                </div>
+                <div class="panel">
+                  <div class="pl">Reconciliation status</div>
+                  <div class="donut-wrap">
+                    <svg width="96" height="96" viewBox="0 0 42 42">
+                      <circle cx="21" cy="21" r="15.9" fill="none" stroke="var(--surface-2)" stroke-width="5.5"/>
+                      <circle cx="21" cy="21" r="15.9" fill="none" stroke="var(--teal)" stroke-width="5.5" stroke-dasharray="82 100" stroke-dashoffset="25" transform="rotate(-90 21 21)"/>
+                    </svg>
+                    <div class="donut-legend">
+                      <div><span class="sw" style="background:var(--teal)"></span>Reconciled &mdash; 82%</div>
+                      <div><span class="sw" style="background:var(--surface-2)"></span>Pending &mdash; 18%</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="car-slide">
+            <div class="device-body">
+              <div class="pl" style="margin-bottom:12px;">Reconciliation details</div>
+              <table class="table-mock">
+                <tr><th>Order ID</th><th>Channel</th><th>Order Value</th><th>Receipt</th><th>Status</th></tr>
+                <tr><td>SF-88213</td><td>Shopify</td><td>&#8377;2,340</td><td>&#8377;2,340</td><td><span class="pill-status good">Reconciled</span></td></tr>
+                <tr><td>AM-51092</td><td>Amazon</td><td>&#8377;1,180</td><td>&#8377;1,062</td><td><span class="pill-status wait">Pending</span></td></tr>
+                <tr><td>FK-70441</td><td>Flipkart</td><td>&#8377;3,650</td><td>&#8377;0</td><td><span class="pill-status bad">Exception</span></td></tr>
+                <tr><td>SF-88214</td><td>Shopify</td><td>&#8377;960</td><td>&#8377;960</td><td><span class="pill-status good">Reconciled</span></td></tr>
+                <tr><td>AM-51093</td><td>Amazon</td><td>&#8377;4,210</td><td>&#8377;4,210</td><td><span class="pill-status good">Reconciled</span></td></tr>
+              </table>
+            </div>
+          </div>
+          <div class="car-slide">
+            <div class="device-body">
+              <div class="pl" style="margin-bottom:12px;">Exception report</div>
+              <table class="table-mock">
+                <tr><th>Order ID</th><th>Channel</th><th>Exception type</th><th>Reason</th><th>Status</th></tr>
+                <tr><td>FK-70441</td><td>Flipkart</td><td>RTO</td><td>Refund pending</td><td><span class="pill-status bad">Open</span></td></tr>
+                <tr><td>SF-88221</td><td>Shopify</td><td>Payment mismatch</td><td>Gateway short by &#8377;40</td><td><span class="pill-status bad">Open</span></td></tr>
+                <tr><td>AM-51101</td><td>Amazon</td><td>Bank not credited</td><td>Awaiting UTR match</td><td><span class="pill-status wait">Tracking</span></td></tr>
+                <tr><td>SF-88190</td><td>Shopify</td><td>Order mismatch</td><td>Duplicate order ID</td><td><span class="pill-status good">Resolved</span></td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="car-nav">
+        <button class="car-arrow" id="carPrev" aria-label="Previous"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9 3L5 7l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <div class="car-dots" id="carDots">
+          <button class="car-dot on" data-i="0" aria-label="Slide 1"></button>
+          <button class="car-dot" data-i="1" aria-label="Slide 2"></button>
+          <button class="car-dot" data-i="2" aria-label="Slide 3"></button>
+        </div>
+        <button class="car-arrow" id="carNext" aria-label="Next"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+    </div>
+    <p class="preview-note">Illustrative sample data &mdash; shown for layout only</p>
+  </div>
+</section>
+
+<section class="section-pad" id="why">
+  <div class="wrap why-grid">
+    <div>
+      <span class="eyebrow">05 &mdash; Why Choose RecoMatrix</span>
+      <h2 style="margin-top:12px;">Less manual matching. More certainty in the numbers.</h2>
+      <div class="pull" style="margin-top:36px;">
+        <q>Reconciliation shouldn&rsquo;t be the reason the books close late.</q>
+        <div class="attrib">&mdash; RecoMatrix design principle</div>
+      </div>
+    </div>
+    <ul class="why-list">
+      <li><svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div><div class="wt">Reduce manual reconciliation</div><div class="wd">Matching that took days runs unattended.</div></div></li>
+      <li><svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div><div class="wt">Improve accuracy</div><div class="wd">Every rupee is traced to its source, not estimated.</div></div></li>
+      <li><svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div><div class="wt">Centralise financial data</div><div class="wd">Every channel and bank statement, one place to look.</div></div></li>
+      <li><svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div><div class="wt">Improve visibility &amp; control</div><div class="wd">See what&rsquo;s reconciled and what still needs attention, today.</div></div></li>
+    </ul>
+  </div>
+</section>
+
+<section class="security section-pad" id="security">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">06 &mdash; Security</span>
+      <h2>The public site and the ledger are two different rooms.</h2>
+      <p>No visitor sees a single figure until they&rsquo;ve signed in. What&rsquo;s reconciled stays behind the door.</p>
+    </div>
+    <div class="sec-grid">
+      <div class="sec-cell"><svg viewBox="0 0 24 24" fill="none"><rect x="5" y="10" width="14" height="10" rx="1.4" stroke="currentColor" stroke-width="1.6"/><path d="M8 10V7a4 4 0 118 0v3" stroke="currentColor" stroke-width="1.6"/></svg><h3>Secure authentication</h3><p>Every session starts with a verified sign-in, no exceptions.</p></div>
+      <div class="sec-cell"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 3.5v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9v-5L12 3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg><h3>Authorised access only</h3><p>Accounts are issued individually; there is no public sign-up.</p></div>
+      <div class="sec-cell"><svg viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V8a3 3 0 10-6 0v4a3 3 0 003 3z" stroke="currentColor" stroke-width="1.6"/><path d="M6 11v1a6 6 0 0012 0v-1M12 18v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><h3>Data privacy</h3><p>Reconciliation data is never surfaced on the public site, in any form.</p></div>
+      <div class="sec-cell"><svg viewBox="0 0 24 24" fill="none"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M3 20a5 5 0 0110 0" stroke="currentColor" stroke-width="1.6"/><circle cx="17" cy="9" r="2.4" stroke="currentColor" stroke-width="1.6"/><path d="M14.5 20a4 4 0 017 0" stroke="currentColor" stroke-width="1.6"/></svg><h3>Role-based access</h3><p>Each account sees only the tools and data it&rsquo;s permitted to.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section-pad final-cta" id="cta">
+  <div class="wrap">
+    <span class="eyebrow">Ready when you are</span>
+    <h2 style="margin-top:14px;">Bring your financial data together. Reconcile smarter.</h2>
+    <p>Sign in to the portal, or reach out for access.</p>
+    <a href="/app/" class="btn btn-primary">Access Platform <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7h8M7 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col foot-about">
+        <span class="brand-word serif" style="font-style:italic;">RecoMatrix</span>
+        <p>A private financial reconciliation &amp; MIS platform for e-commerce and D2C finance teams. Access is by authorised account only.</p>
+      </div>
+      <div class="foot-col">
+        <div class="fc-head">Solutions</div>
+        <ul>
+          <li><a href="#solutions">E-commerce Reconciliation</a></li>
+          <li><a href="#solutions">Payment &amp; Bank Reconciliation</a></li>
+          <li><a href="#solutions">Settlement Reconciliation</a></li>
+          <li><a href="#solutions">MIS &amp; Financial Analytics</a></li>
+        </ul>
+      </div>
+      <div class="foot-col">
+        <div class="fc-head">Platform</div>
+        <ul>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#how">How it works</a></li>
+          <li><a href="#security">Security</a></li>
+          <li><a href="/app/">Login</a></li>
+        </ul>
+      </div>
+      <div class="foot-col foot-news">
+        <div class="fc-head">Stay Updated</div>
+        <p style="font-size:0.84rem;">Product notes and release updates for the RecoMatrix portal.</p>
+        <div class="nf">
+          <input type="email" placeholder="you@company.com" aria-label="Email address">
+          <button class="btn btn-primary btn-sm" type="button">Subscribe</button>
+        </div>
+      </div>
+    </div>
+    <div class="foot-copy">&copy; 2026 RecoMatrix &middot; A private financial reconciliation &amp; MIS platform</div>
+  </div>
+</footer>
+
+<script>
+  var nav = document.getElementById('nav');
+  window.addEventListener('scroll', function(){
+    nav.classList.toggle('is-scrolled', window.scrollY > 8);
+  }, { passive: true });
+
+  (function(){
+    var track = document.getElementById('carSlides');
+    var dots = Array.prototype.slice.call(document.querySelectorAll('.car-dot'));
+    var urlEl = document.getElementById('carUrl');
+    var urls = [
+      'recomatrix.com/portal/reconciliation/dashboard',
+      'recomatrix.com/portal/reconciliation/details',
+      'recomatrix.com/portal/reconciliation/exceptions'
+    ];
+    var i = 0, n = dots.length;
+    function go(idx){
+      i = (idx + n) % n;
+      track.style.transform = 'translateX(' + (-i * 100) + '%)';
+      dots.forEach(function(d, k){ d.classList.toggle('on', k === i); });
+      if (urlEl) urlEl.textContent = urls[i];
+    }
+    document.getElementById('carPrev').addEventListener('click', function(){ go(i - 1); });
+    document.getElementById('carNext').addEventListener('click', function(){ go(i + 1); });
+    dots.forEach(function(d){ d.addEventListener('click', function(){ go(parseInt(d.dataset.i, 10)); }); });
+  })();
+</script>
