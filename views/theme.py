@@ -25,6 +25,26 @@ section[data-testid="stSidebar"] [data-testid="stNavSectionHeader"] {{
     color: #8888A0 !important;
 }}
 
+/* "‹ Back to Portal" / "Log out" buttons - Streamlit renders these with
+its own light button background regardless of the dark sidebar around
+them, so the blanket "make all sidebar text near-white" rule just above
+was leaving pale text on a pale button (nearly invisible). Give buttons
+their own explicit, readable styling instead of only inheriting the
+generic sidebar text color. */
+section[data-testid="stSidebar"] button {{
+    background-color: rgba(255,255,255,0.08) !important;
+    border: 1px solid rgba(232,232,240,0.35) !important;
+}}
+section[data-testid="stSidebar"] button:hover {{
+    background-color: rgba(255,255,255,0.16) !important;
+    border-color: #FFFFFF !important;
+}}
+section[data-testid="stSidebar"] button p,
+section[data-testid="stSidebar"] button span,
+section[data-testid="stSidebar"] button div {{
+    color: #FFFFFF !important;
+}}
+
 /* KPI card look for st.metric */
 div[data-testid="stMetric"] {{
     background: white;
