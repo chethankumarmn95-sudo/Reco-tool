@@ -16,6 +16,7 @@ doesn't tie out - exactly what columns D through AA do in your workbook.
 import pandas as pd
 from .loaders import normalize_order_id, resolve_col_or_raise, resolve_col
 from .bank import COD_SETTLEMENT_PENDING, PREPAID_SETTLEMENT_PENDING, EXCEPTION_MANUAL_REVIEW
+from .attribution import cod_component_of_gateway_label, prepaid_component_of_gateway_label
 
 # Client-reported 2026-08-31 (points 2/3): the ONE canonical definition of
 # "this order's money hasn't reached the bank yet" is
@@ -169,6 +170,31 @@ def classify_status(raw_status):
     return "Other"
 
 
+# How definitive/final each classify_status() bucket is, used ONLY to pick
+# a winner when more than one delivery partner has a classifiable status
+# for the SAME order (see attach_delivery_status()'s resolve_row() below -
+# client-reported 2026-09-04, order #31475: Shiprocket cancelled a leg,
+# Delhivery genuinely delivered a re-shipment of the same order, and the
+# tool needs to show Delhivery/Delivered, not whichever courier happens to
+# be listed first in configs/*.json). Higher = wins. "Cancelled" is
+# deliberately the LOWEST real bucket: it means nothing happened on THAT
+# courier's leg, which is exactly the kind of outcome a genuine result
+# from a different courier (delivered, returned, lost, even still in
+# transit) should be allowed to supersede. Two partners that land in the
+# SAME bucket (both "Delivered", both "Cancelled", ...) still tie-break to
+# the original config priority order, unchanged from before this fix.
+_STATUS_FINALITY = {
+    "Delivered": 6,
+    "RTO": 5,
+    "Lost": 5,
+    "Refunded": 5,
+    "Undelivered": 3,
+    "In Transit": 2,
+    "Other": 2,
+    "Cancelled": 1,
+}
+
+
 def attach_delivery_status(order_master, delivery_frames, delivery_configs):
     """
     Checks EVERY delivery partner file for each order (not just the first
@@ -186,6 +212,18 @@ def attach_delivery_status(order_master, delivery_frames, delivery_configs):
     the remaining partners instead of giving up and showing "Status
     Undefined" - that silent giving-up was the actual bug behind order
     #16411 showing Undefined despite Delhivery clearly showing RTO.
+
+    Client-reported 2026-09-05 (order #32318): a REAL courier's own
+    classifiable status always wins over an OMS/WMS platform's (currently
+    just Unicommerce, identified by its config setting courier_label_col
+    - see resolve_row() below), regardless of which bucket looks more
+    "final" by _STATUS_FINALITY. Unicommerce only ever tracks what the
+    real courier (and any manual ops adjustment) told it and can lag
+    behind, so it's consulted only when NO real courier gave a
+    classifiable status for the order at all - never used to override
+    one. Order #32318 itself: Delhivery says Lost, Unicommerce's own
+    tracking still shows Delivered - final_delivery_status must still
+    resolve to Lost.
     """
     df = order_master.copy()
     df["delivery_partner"] = None
@@ -263,36 +301,113 @@ def attach_delivery_status(order_master, delivery_frames, delivery_configs):
             matched = df["order_id"].isin(rto_lookup.index)
             df.loc[matched, "rto_date"] = df.loc[matched, "order_id"].map(rto_lookup.to_dict())
 
-    # Now decide the final status: walk partners in priority order, and for
-    # each order, use the first partner whose raw status actually classifies
-    # to a known bucket - falling through to the next partner if it doesn't.
+    # Now decide the final status. Client-reported 2026-09-04 (order
+    # #31475): an order can genuinely be handed to MORE THAN ONE courier
+    # over its life - picked up by Shiprocket, cancelled there, then
+    # re-shipped and actually delivered by Delhivery. The old rule below
+    # simply walked delivery_configs in config-array order and took the
+    # FIRST partner with any classifiable status at all - so Shiprocket's
+    # stale "CANCELED" (still sitting in its own raw file, correctly, as a
+    # record of that abandoned leg) outranked Delhivery's later genuine
+    # "DELIVERED" purely because Shiprocket happens to be listed first in
+    # configs/*.json, even though Delhivery's status is the one that
+    # actually describes what happened to the order. Confirmed against the
+    # client's own July data: every one of the 8 orders where two couriers
+    # both have a row (#28296/31475/31669/31803/32006/32192 = one courier
+    # Cancelled + another Delivered/RTO; #26444/26829 = one courier's order
+    # barely created ("NEW ORDER"/In Transit) while another already shows
+    # RTO_DELIVERED) should show the courier with the more DEFINITIVE
+    # outcome, not the earlier-priority one.
+    #
+    # Fix: when more than one configured partner has a classifiable status
+    # for the same order, rank each classified bucket by how definitive/
+    # final an outcome it represents (_STATUS_FINALITY below) and pick the
+    # partner with the single most definitive one - falling back to the
+    # original config priority order only to break a genuine tie (e.g. two
+    # couriers both say "Delivered" - keep whichever is listed first,
+    # unchanged from before). "Cancelled" ranks LOWEST of every real
+    # bucket here on purpose: a cancelled leg on one courier is exactly the
+    # kind of outcome a genuine delivery/RTO/lost result on a DIFFERENT
+    # courier should be allowed to supersede, whereas two couriers that
+    # both say "Cancelled" (or anything else that agrees) still tie-break
+    # to the config's own priority order same as always. The vast majority
+    # of orders (7276 of 7289 on the client's own July data) have only one
+    # courier with a row at all, so this is a no-op for them - identical
+    # output to before.
     def resolve_row(order_id):
-        for cfg in delivery_configs:
+        candidates = []  # (priority_index, label, classified) for every
+        # REAL COURIER (or manual-report) partner that gave this order a
+        # classifiable status - almost always just one.
+        oms_candidates = []  # same, but for an OMS/WMS platform config
+        # (cfg["courier_label_col"] set - currently just Unicommerce).
+        for priority_index, cfg in enumerate(delivery_configs):
             label = cfg["label"]
             lookup = partner_status_lookups.get(label)
             if lookup is None or order_id not in lookup.index:
                 continue
-            raw = lookup[order_id]
-            classified = classify_status(raw)
-            if classified is not None:
-                display_label = label
-                # Prefer this source's own real-courier column (e.g.
-                # Unicommerce's "Shipping provider") over its generic label,
-                # falling back to the label when the column is missing/blank
-                # for this order so behavior degrades safely.
-                courier_lookup = partner_courier_label_lookups.get(label)
-                if courier_lookup is not None and order_id in courier_lookup.index:
-                    courier_name = courier_lookup[order_id]
-                    if pd.notna(courier_name) and str(courier_name).strip():
-                        display_label = str(courier_name).strip()
-                return display_label, classified
+            classified = classify_status(lookup[order_id])
+            if classified is None:
+                continue
+            (oms_candidates if cfg.get("courier_label_col") else candidates).append(
+                (priority_index, label, classified)
+            )
+
+        # Client-reported 2026-09-05 (order #32318): Unicommerce is an
+        # order-management/WMS platform, not a courier - it just tracks
+        # whatever the real courier (and any manual ops adjustment) told
+        # it, and can lag behind. It must never outrank an actual
+        # courier's own classifiable status, no matter how "final" its
+        # own reported status looks by _STATUS_FINALITY (e.g. Unicommerce
+        # showing "Delivered" while Delhivery's own feed already says
+        # "Lost" must still resolve to Lost - Delhivery is the real
+        # courier here and Unicommerce is only ever a fallback). So a real
+        # courier's classifiable status is used whenever ANY exists; an
+        # OMS/WMS platform's own status is only even considered when NO
+        # real courier gave a classifiable status for this order at all
+        # ("if status not clear then rely on Unicommerce", per the
+        # client's own framing). The finality-based tie-break above
+        # (order #31475) still applies WITHIN each of these two groups -
+        # e.g. two real couriers disagreeing is unaffected by this change.
+        candidate_pool = candidates if candidates else oms_candidates
+
+        if candidate_pool:
+            best_priority, best_label, best_classified = max(
+                candidate_pool,
+                key=lambda c: (_STATUS_FINALITY.get(c[2], 0), -c[0]),
+            )
+            display_label = best_label
+            # Prefer this source's own real-courier column (e.g.
+            # Unicommerce's "Shipping provider") over its generic label,
+            # falling back to the label when the column is missing/blank
+            # for this order so behavior degrades safely.
+            courier_lookup = partner_courier_label_lookups.get(best_label)
+            if courier_lookup is not None and order_id in courier_lookup.index:
+                courier_name = courier_lookup[order_id]
+                if pd.notna(courier_name) and str(courier_name).strip():
+                    display_label = str(courier_name).strip()
+            # Client-reported 2026-09-04 (order #30091): Unicommerce is an
+            # order-management/inventory system, not a courier - it should
+            # never itself be shown as the delivery_partner. Normally its
+            # own "Shipping provider" column (courier_lookup above) names
+            # the REAL courier and that substitution already handles it;
+            # this only fires on the residual case where Unicommerce is the
+            # order's only resolvable source AND its own "Shipping
+            # provider" is blank for this order too (Unicommerce genuinely
+            # doesn't know who shipped it either) - confirmed against the
+            # client's own reference workbook, which shows the literal
+            # "partner undifined" (her own spelling) for exactly this case
+            # rather than the software's name.
+            if display_label == "Unicommerce":
+                display_label = "partner undifined"
+            return display_label, best_classified
+
         # No partner gave a classifiable status - but if ANY partner at
         # least had the order, say so rather than a bare "Undefined".
         for cfg in delivery_configs:
             label = cfg["label"]
             lookup = partner_status_lookups.get(label)
             if lookup is not None and order_id in lookup.index:
-                return label, "Status Undefined"
+                return ("partner undifined" if label == "Unicommerce" else label), "Status Undefined"
         return None, "Status Undefined"
 
     resolved = df["order_id"].apply(resolve_row)
@@ -318,99 +433,161 @@ def attach_receipts_and_diff(order_master, receipt_summary):
     return df
 
 
-def attach_settlement_pending(reco_df, settlement_pending_df):
+def attach_pending_cod_receipts(reco_df, pending_cod_df):
     """
-    Merges each order's outstanding Settlement Pending amount (engine/
-    settlement_pending.py::build_settlement_pending_report()'s own
-    "Settlement Amount" column - already the correct net-of-deduction/
-    refund figure for orders with a settlement row, or the full order
-    Total for orders with none yet - see that function's docstring) onto
-    reco_df as "settlement_pending_amount", so engine/summary.py's
-    headline_totals() can subtract it from the raw settlement_amount total
-    to get a "Net settlement" that reflects only money that has actually
-    reached the bank (client-reported 2026-08-27: Net Settlement should
-    ultimately tie to the Bank Credit amount, and didn't, because it was
-    counting still-pending money as already settled - see
-    headline_totals()'s own docstring for the full story).
+    Client-reported 2026-09-04 (round 10, point 2): "Shiprocket COD Amount
+    Not Reflecting in receipt_amount" - see engine.consolidator.build_
+    pending_cod_receipts()'s own docstring for the full root-cause story
+    (normalize_gateway_df's settled_status_col filter drops a not-yet-
+    remitted Shiprocket/Prozo COD row entirely before it ever reaches
+    receipt_summary, so attach_receipts_and_diff() above never sees it -
+    receipt_amount stays 0 even though the courier's own COD report
+    plainly lists the amount).
 
-    Client-reported again 2026-08-30, against a fresh July-only run: Net
-    Settlement was STILL wrong (too low by ~₹3.2 lakh on the client's own
-    data) even after the fix above, because this originally summed
-    build_settlement_pending_report()'s "Settlement Amount" column
-    UNFILTERED - which deliberately includes two different kinds of
-    "pending" money (see that function's own has_settlement_row branch):
-    (a) orders the gateway/courier has already reported money received
-    for but that hasn't reached the bank yet (Gateway Amount > 0 - this
-    money IS already inside reco_df's own receipt_amount, and therefore
-    inside "Receipt before deduction" above, so it's exactly what needs
-    subtracting to avoid double-counting it as settled), and (b) orders
-    nothing has been collected for AT ALL yet (Gateway Amount == 0, has_
-    settlement_row False - e.g. a Payu/Gokwik order still awaiting its
-    first settlement file) - whose "Settlement Amount" is that function's
-    fallback to the order's full gross Total, precisely because there's no
-    receipt yet to net against. That figure was NEVER added into receipt_
-    amount/"Receipt before deduction" in the first place, so subtracting
-    it here double-subtracted money that was never counted as received -
-    confirmed against the client's own corrected workbook, where COD
-    partners awaiting bank credit (money already collected, e.g. Delhivery
-    COD/Shiprocket COD settlement-pending amounts) reduce Net Settlement,
-    but Payu/Gokwik orders with nothing collected yet do not. Fix: only
-    orders with a settlement row already (Gateway Amount > 0 - i.e.
-    genuinely "collected but not yet bank-credited") are summed into
-    settlement_pending_amount; "nothing collected yet" orders correctly
-    stay visible in the Settlement Pending Detail/Summary sheets (used for
-    exception-chasing, not touched by this filter) but no longer reduce
-    Net Settlement.
+    pending_cod_df is that same function's own output - the not-yet-
+    settled rows, kept ALONGSIDE (not instead of) the existing settled-
+    only consolidated_df/receipt_summary. This rescues receipt_amount
+    (and, so the "diff"/"settlement_amount" formulas stay internally
+    consistent, total_deduction alongside it) for an order that:
+      - is Delivered by the SAME courier the pending row came from (a COD
+        gateway's own label minus its " COD" suffix - e.g. a "Shiprocket
+        COD" pending row only ever fills in for an order whose delivery_
+        partner is "Shiprocket" - never a different courier's order that
+        happens to share an order_id collision), and
+      - has receipt_amount == 0 so far (nothing from ANY other, already-
+        settled source has already been recorded for it) - deliberately
+        conservative: an order already showing a genuine partial receipt
+        from some other source is left exactly as the existing pipeline
+        already treats it, rather than risk double-counting a scenario
+        this fix wasn't asked to handle.
 
-    Deliberately NOT part of run_shopify_pipeline() below: settlement
-    pending can only be computed once bank matching / reconciliation
-    categories exist (engine.bank.classify_order_bank_status(), consumed by
-    build_settlement_pending_report()), which happens later in
-    views/page_reconciliation.py and views/page_reports.py than Layer 3
-    runs - both call this explicitly, right after they compute
-    settlement_pending_df.
+    Deliberately does NOT touch engine.bank.classify_order_bank_status()'s
+    own has_settlement_row/Reconciliation Category at all - that function
+    keeps computing both from the ORIGINAL, unchanged, settled-only
+    consolidated_df, so an order this function rescues still correctly
+    lands in COD_SETTLEMENT_PENDING exactly as before (the "has this
+    money reached OUR bank" question is unaffected); only the Reco
+    working sheet's own receipt_amount/diff/settlement_amount - and,
+    downstream, the Recipt Remark / Query text, both of which now key off
+    receipt_amount for exactly this reason - see attach_receipt_status()
+    and refine_queries_with_settlement_status() below - change.
 
-    Only orders build_settlement_pending_report() actually lists (COD/
-    Prepaid orders still Settlement Pending or flagged an Exception - see
-    that function's PENDING_CATEGORIES) AND that already have a Gateway
-    Amount (money genuinely collected, awaiting bank credit) get a
-    non-zero value; every other order's settlement_pending_amount is 0 -
-    either its settlement_amount is already fully realized, or nothing has
-    been collected for it yet, so there's nothing sitting inside receipt_
-    amount that needs netting back out.
+    Call this right after run_shopify_pipeline(), before
+    classify_order_bank_status() - so recon_status_df/settlement_pending_
+    df/every later step in the pipeline all see the corrected receipt_
+    amount consistently, and (once the period is saved via engine.storage.
+    save_run()) so the fix is permanent for that saved period, not just
+    the current screen - mirroring how every other "wire into the core
+    pipeline, not just the exported workbook" fix in this engine works.
 
-    settlement_pending_df may legitimately be None/empty (e.g. no bank
-    statement uploaded this run, or nothing is currently pending) - reco_df
-    still gets the column, just filled with 0.0 everywhere, so downstream
-    code (headline_totals(), the Reco working export) can always rely on
-    the column being present rather than checking for it every time.
+    pending_cod_df may legitimately be None/empty (no COD gateway in this
+    client's config declares settled_status_col, or none of those files
+    were uploaded this run, or none of their rows are pending) - reco_df
+    is returned completely unchanged in that case.
     """
     df = reco_df.copy()
-    df["settlement_pending_amount"] = 0.0
-    if settlement_pending_df is None or settlement_pending_df.empty:
+    if pending_cod_df is None or pending_cod_df.empty:
+        return df
+    if "delivery_partner" not in df.columns or "final_delivery_status" not in df.columns:
         return df
 
-    pending = settlement_pending_df[["Order ID", "Settlement Amount", "Gateway Amount"]].copy()
-    pending["Order ID"] = pending["Order ID"].astype(str)
-    # Only money already collected by the gateway/courier (and therefore
-    # already inside reco_df's receipt_amount / "Receipt before deduction")
-    # but not yet bank-credited counts against Net Settlement - see the
-    # docstring above. A blank/zero Gateway Amount means nothing has been
-    # collected yet; that order's full-Total "Settlement Amount" fallback
-    # must NOT reduce Net Settlement, or money never counted as received
-    # gets subtracted from it anyway.
-    pending["Gateway Amount"] = pending["Gateway Amount"].fillna(0.0)
-    pending = pending[pending["Gateway Amount"] > 0.01]
-    pending_lookup = pending.groupby("Order ID")["Settlement Amount"].sum()
-
     df["order_id"] = df["order_id"].astype(str)
-    matched = df["order_id"].isin(pending_lookup.index)
-    # .to_dict() first, not .map()'d straight off the Series - same fix as
-    # attach_delivery_status()'s date lookups above and
-    # engine/summary.py's month_summary(): sidesteps a pandas dtype-
-    # inference crash when the mapper Series is empty.
-    df.loc[matched, "settlement_pending_amount"] = df.loc[matched, "order_id"].map(pending_lookup.to_dict())
-    df["settlement_pending_amount"] = df["settlement_pending_amount"].fillna(0.0)
+    pending = pending_cod_df.copy()
+    pending["order_id"] = pending["order_id"].astype(str)
+    pending["_courier"] = pending["source"].astype(str).str.replace(r"\s*COD$", "", regex=True).str.strip()
+
+    amount_by_key = pending.groupby(["order_id", "_courier"])["amount"].sum().to_dict()
+    deduction_by_key = pending.groupby(["order_id", "_courier"])["deduction"].sum().to_dict()
+
+    receipt = df["receipt_amount"].fillna(0.0) if "receipt_amount" in df.columns else pd.Series(0.0, index=df.index)
+    eligible = (df["final_delivery_status"] == "Delivered") & (receipt.abs() <= 0.004)
+    if not eligible.any():
+        return df
+
+    keys = list(zip(df["order_id"], df["delivery_partner"].astype(str)))
+    matched_amount = pd.Series([amount_by_key.get(k) for k in keys], index=df.index)
+    matched_deduction = pd.Series([deduction_by_key.get(k) for k in keys], index=df.index)
+    apply_mask = eligible & matched_amount.notna() & (matched_amount.fillna(0.0).abs() > 0.004)
+    if not apply_mask.any():
+        return df
+
+    if "total_deduction" not in df.columns:
+        df["total_deduction"] = 0.0
+    df.loc[apply_mask, "receipt_amount"] = matched_amount[apply_mask]
+    df.loc[apply_mask, "total_deduction"] = (
+        df.loc[apply_mask, "total_deduction"].fillna(0.0) + matched_deduction[apply_mask].fillna(0.0)
+    )
+    if "refund_amount" not in df.columns:
+        df["refund_amount"] = 0.0
+    df["diff"] = df["total"] - df["receipt_amount"]
+    df["settlement_amount"] = df["receipt_amount"] - df["total_deduction"] - df["refund_amount"]
+    return df
+
+
+def attach_settlement_pending(reco_df, gateway_configs):
+    """
+    Attaches each order's outstanding Settlement Pending amount onto
+    reco_df as "settlement_pending_amount", so engine/summary.py's
+    headline_totals() can report it as its own "Settlement pending"
+    headline figure - the same figure the Dashboard tile and Executive
+    Summary "Headline Numbers" section both read off of.
+
+    Rewritten 2026-09-05 (client-reported): the Dashboard/Executive
+    Summary "Settlement Pending Amount" only showed Delhivery COD's
+    pending money - Shiprocket COD's ₹1,17,670.47 and Payu's pending
+    amount were both missing. The PREVIOUS implementation summed engine/
+    settlement_pending.py::build_settlement_pending_report()'s "Settlement
+    Amount", filtered to that same report's "Gateway Amount" > 0.01 -
+    where "Gateway Amount" is read off recon_status_df (engine.bank.
+    classify_order_bank_status()'s output, computed from the ORIGINAL,
+    unrescued consolidated_df). Two different kinds of still-pending money
+    fell through that filter for two different reasons:
+      - Shiprocket COD (or any settled_status_col-configured courier)
+        orders engine.reco.attach_pending_cod_receipts() rescues (round
+        10) - recon_status_df's own receipt_amount never learns about that
+        rescue, so "Gateway Amount" stayed 0 for them there even though
+        reco_df's own receipt_amount is correctly populated.
+      - Payu (or any prepaid gateway) orders with NOTHING collected yet at
+        all - excluded on purpose under the OLD design, which existed only
+        to net Net Settlement (see the removed docstring's own history:
+        money never added to receipt_amount shouldn't be double-subtracted
+        from it). That purpose no longer needs this exclusion - see below.
+
+    Now built from engine/settlement_pending.py::pending_amount_by_order(),
+    the SAME per-order helper settlement_pending_summary_by_gateway() (the
+    by-gateway Settlement Pending Summary sheet) already uses - so the
+    Dashboard/Executive Summary headline figure and that by-gateway sheet
+    can never disagree again, and BOTH now correctly include every still-
+    pending order regardless of gateway or whether anything's been
+    collected yet (Payu/Gokwik orders with nothing collected show their
+    full order Total as outstanding, exactly like the Settlement Pending
+    Summary sheet already did for them).
+
+    Why this no longer needs the old "only if Gateway Amount > 0" carve-
+    out for Net Settlement purposes: engine/reco.py::attach_receipt_status()
+    (2026-09-05, client-reported separately - the "Bank credit" leak fix)
+    now directly zeroes "settlement_amount" for every order still in a
+    pending Reconciliation Category, BEFORE this function ever runs. So
+    headline_totals()'s "pending_deduction" (settlement_pending_amount
+    capped at each order's own non-negative settlement_amount) is already
+    0 for every such order regardless of how large settlement_pending_
+    amount is - settlement_amount, not this column, is what actually
+    prevents Net Settlement from double-counting still-pending money now.
+    This column can therefore safely show the FULL outstanding exposure
+    (matching the Settlement Pending Summary sheet) without corrupting Net
+    Settlement - see headline_totals()'s own docstring for that reasoning
+    in full.
+
+    Must run after attach_receipt_status() (needs reco_df's own finalised
+    "receipt_status"/"Gateway"/"query" columns - the same signals that
+    function and settlement_pending_summary_by_gateway() already key off)
+    - both views/page_reconciliation.py and views/page_reports.py call
+    this right after attach_receipt_status(), not before.
+    """
+    from .settlement_pending import pending_amount_by_order
+
+    df = reco_df.copy()
+    df["settlement_pending_amount"] = pending_amount_by_order(df, gateway_configs).fillna(0.0)
     return df
 
 
@@ -503,6 +680,29 @@ def flag_queries(df):
     case's wording changes. See attach_receipt_status() below for the
     matching Recipt Remark change ("Not received").
 
+    Client-reported 2026-09-05 (point 1): a Status Undefined order that
+    HAS received something (in full, or partially without a full refund -
+    the two cases already carved out above still take priority) used to
+    fall through to "Okk" - wrong, since an undetermined delivery status
+    with money already in hand is itself an open question, not a clean
+    tie-out. Now reads "Amount received Delivery status undefined"
+    (example order #26735). Note this is Layer-3's own diff-only wording;
+    when the order also resolves to a specific pending payment gateway
+    (e.g. Payu) via bank-matching data, refine_queries_with_settlement_
+    status() below can further replace the "nothing received" branch's
+    text with a gateway-specific one - see that function's own docstring
+    (point 2).
+
+    Client-reported 2026-09-05 (point 3): a Lost shipment used to be
+    treated the same as an RTO - flagged only when something was actually
+    received and not refunded, otherwise a plain "Okk" (nothing collected
+    being the normal, expected COD outcome). The client's own explicit
+    rule: a Lost shipment is ALWAYS an open question about credit note
+    status, regardless of whether anything was ever collected - so Lost
+    now always reads "Shipment LOST what is Credit note Status?" (example
+    order #28994), replacing the previous conditional RTO-shared wording
+    entirely. RTO's own behaviour (and Cancelled/Refunded) is unchanged.
+
     Disclosed gap, not guessed around: a Delivered order whose
     receipt_amount sits at roughly half of Total with nothing further
     missing (order value genuinely split part-prepaid/part-COD, ~36
@@ -576,23 +776,39 @@ def flag_queries(df):
                 return "Why Partially received and same amount refunded"
             if not received:
                 return "COD Delivery status Undifined  Amount not Received"
-            return "Okk"
+            # Client-reported 2026-09-05 (point 1): previously fell through
+            # to "Okk" whenever something was actually received (the
+            # partial-fully-refunded and nothing-received cases above were
+            # already handled) - an order that HAS a receipt but whose
+            # delivery status still couldn't be determined is itself worth
+            # a look, not a clean "Okk". Covers both a full receipt and a
+            # partial receipt that was NOT fully refunded (order 26735).
+            return "Amount received Delivery status undefined"
         if status in ("RTO", "Cancelled", "Lost", "Refunded"):
             if partial_receipt and refund >= receipt - 1:
                 # Whatever partial amount came in went straight back out -
                 # confirmed across RTO/Cancelled/Status Undefined orders in
                 # the client's own data, not status-specific.
                 return "Why Partially received and same amount refunded"
-            if status in ("RTO", "Lost") and received and not refunded:
-                # For COD, nothing is collected until delivery, so RTO/Lost
+            if status == "Lost":
+                # Client-reported 2026-09-05 (point 3): previously only
+                # flagged a Lost shipment when something was actually
+                # received and not refunded, otherwise falling through to
+                # "Okk" (treated the same as an RTO - "nothing collected is
+                # normal for COD"). The client's own explicit rule: a Lost
+                # shipment is ALWAYS an open question about credit note
+                # status, regardless of whether anything was ever
+                # collected - so this is now unconditional and no longer
+                # shares the RTO received-and-not-refunded branch below.
+                return "Shipment LOST what is Credit note Status?"
+            if status == "RTO" and received and not refunded:
+                # For COD, nothing is collected until delivery, so RTO
                 # simply means "never collected" - normal, not an exception
                 # - UNLESS something WAS actually received and hasn't been
                 # refunded, which is the real anomaly worth flagging.
                 # Cancelled/Refunded do NOT get this same flag even when
                 # received-and-not-refunded (confirmed against the client's
                 # own data - see docstring above).
-                if status == "Lost":
-                    return "Shipment LOST - Refund/Credit note status required?"
                 return f"Delhivery status is {status} what is Refund status?"
             return "Okk"
         if status == "Undelivered":
@@ -722,6 +938,27 @@ def refine_queries_with_settlement_status(reco_df, recon_status_df):
     guess with the real reason once it's known - a real, already-specific
     flag_queries() concern (a refund, an RTO refund-status question, a
     genuine partial payment) is still never touched.
+
+    Client-reported 2026-09-05 (point 2): a Status Undefined order with
+    nothing received gets a THIRD candidate label from flag_queries() -
+    "COD Delivery status Undifined  Amount not Received" - which this
+    function previously never touched at all (it wasn't in the generic-
+    labels tuple), even when the order resolves to a specific pending
+    gateway. Confirmed against the client's own report: order #26366
+    (Payment Provider "Payu", Status Undefined, nothing received) kept the
+    COD-flavoured wording verbatim even though "Payu" isn't COD at all -
+    the client's own corrected text is "Delivery status Undifined Payu
+    Amount not setled". Fixed by adding this label as a fourth candidate,
+    with its OWN phrasing template (not the "<Gateway> Setlment Pending"
+    one used for the Delivered-style labels above) - see _label() below:
+    a resolved COD-courier Gateway leaves the original COD wording
+    untouched (a genuine COD order with an undetermined delivery status
+    and nothing collected is, by design, excluded from "still pending"
+    anyway - see the _RECEIPT_PENDING_CATEGORIES note above - so this
+    branch is mostly reached by non-COD gateways in practice), a resolved
+    non-COD gateway swaps in "Delivery status Undifined {Gateway} Amount
+    not setled", and an unresolved Gateway leaves the original text as-is
+    (nothing more specific to say).
     """
     if reco_df is None or reco_df.empty:
         return reco_df
@@ -748,7 +985,14 @@ def refine_queries_with_settlement_status(reco_df, recon_status_df):
     # received - reason?" gets touched - a real, already-flagged concern
     # is left alone.
     still_pending = category.isin(_RECEIPT_PENDING_CATEGORIES)
-    generic_labels = ("Okk", "Delivered but amount not received - reason?")
+    # "COD Delivery status Undifined  Amount not Received" (client-reported
+    # 2026-09-05, point 2) is a fourth candidate label - see this
+    # function's own docstring above - handled with its own phrasing
+    # template in _label() below rather than the generic one.
+    _STATUS_UNDEFINED_NOT_RECEIVED = "COD Delivery status Undifined  Amount not Received"
+    generic_labels = (
+        "Okk", "Delivered but amount not received - reason?", _STATUS_UNDEFINED_NOT_RECEIVED,
+    )
     candidates = df["query"].isin(generic_labels) & still_pending.fillna(False)
     if not candidates.any():
         return df
@@ -756,13 +1000,45 @@ def refine_queries_with_settlement_status(reco_df, recon_status_df):
     gateway = df["Gateway"] if "Gateway" in df.columns else pd.Series(None, index=df.index)
     receipt = df["receipt_amount"].fillna(0.0)
     total = df["total"].fillna(0.0)
+    orig_query = df["query"]
 
     def _label(idx):
         gw = gateway.loc[idx]
         gw = str(gw).strip() if pd.notna(gw) else ""
+        # 2026-09-06 (round 16, order #30456): engine.attribution.
+        # combine_prepaid_and_cod_label() can now hand "Gateway" a
+        # COMBINED label - "<courier> COD, <prepaid provider>" (e.g.
+        # "Delhivery COD, PayU") - for a genuine part-prepaid/part-COD
+        # order. Before this fix, the _COD_SETTLEMENT_PENDING_PHRASES
+        # lookup below only ever matched a bare, single label, so a
+        # combined string fell straight to the generic "{gw} Setlment
+        # Pending" branch and produced a garbled "Delhivery COD, PayU
+        # Setlment Pending" Query text - the client's own follow-up ask
+        # ("update the Query and Receipt Remark for this Order ID based
+        # on the corrected Payment Provider"). cod_component_of_gateway_
+        # label() recovers just the COD leg (always first, per round 16's
+        # ordering convention) - the prepaid leg was already collected at
+        # checkout, so the genuinely OUTSTANDING/pending money this Query
+        # text describes is always the COD leg, never the already-settled
+        # prepaid one.
+        gw_cod = cod_component_of_gateway_label(gw)
         rcpt, tot = receipt.loc[idx], total.loc[idx]
-        if gw in _COD_SETTLEMENT_PENDING_PHRASES:
-            base = _COD_SETTLEMENT_PENDING_PHRASES[gw]
+
+        if orig_query.loc[idx] == _STATUS_UNDEFINED_NOT_RECEIVED:
+            # Status Undefined's own placeholder - a different phrasing
+            # template from the Delivered-style labels below (keeps the
+            # "Delivery status Undifined" framing, only the amount/gateway
+            # half changes).
+            if gw_cod in _COD_SETTLEMENT_PENDING_PHRASES:
+                # A genuine COD courier resolves here in practice - leave
+                # the original COD wording untouched.
+                return _STATUS_UNDEFINED_NOT_RECEIVED
+            if gw and gw not in ("#N/A", "NA", "nan"):
+                return f"Delivery status Undifined {gw} Amount not setled"
+            return _STATUS_UNDEFINED_NOT_RECEIVED
+
+        if gw_cod in _COD_SETTLEMENT_PENDING_PHRASES:
+            base = _COD_SETTLEMENT_PENDING_PHRASES[gw_cod]
             if rcpt <= 1:
                 return f"{base} not reflecting"
             if tot > 1 and rcpt < tot - 1:
@@ -773,6 +1049,157 @@ def refine_queries_with_settlement_status(reco_df, recon_status_df):
         return "COD Delivered Amount not Received"
 
     df.loc[candidates, "query"] = [_label(i) for i in df.index[candidates]]
+    return df
+
+
+def refine_split_payment_queries(reco_df, leg_status_by_order):
+    """
+    Client-reported 2026-09-06 (round 17) - order #30456's own direct
+    follow-up to round 16's Payment Provider fix: "yes now order id 30456
+    updated correctly but query update missing now showing query Partial
+    Payment Received but this case delhivery COD setled but payu
+    setlment pending query to be asked 'Delhivery COD Setled, payu
+    Setlment Pending'".
+
+    refine_queries_with_settlement_status() above can't do this: it only
+    ever replaces one of a fixed set of GENERIC diff-only labels ("Okk",
+    "Delivered but amount not received - reason?",
+    _STATUS_UNDEFINED_NOT_RECEIVED) with a single gateway's pending
+    phrase. "Partial Payment Received" (flag_queries()'s own label for
+    0 < receipt_amount < total) is deliberately not one of them - a
+    genuine partial payment (real money genuinely short) and a genuine
+    split payment (all the money is in, just via two rails with two
+    different settlement timelines) look identical by receipt_amount vs
+    total alone. The combined "Gateway" label (engine.attribution.
+    combine_prepaid_and_cod_label()'s "<courier> COD, <prepaid provider>"
+    output) is the only reliable signal telling them apart, so this is a
+    separate, later pass - called only for orders whose Gateway/Payment
+    Provider is actually a combined label, never touching a genuine
+    single-gateway partial payment.
+
+    leg_status_by_order: engine.bank.resolve_split_payment_leg_status()'s
+    output (order_id -> {"cod_matched": bool/None, "prepaid_matched":
+    bool/None}) - the row-level, per-leg bank-matching signal that
+    classify_order_bank_status()'s order-level aggregate can't see (see
+    that function's own docstring for the full root-cause story). A leg
+    missing from this dict, or explicitly None, is treated the same as
+    "not yet matched" for wording purposes - conservative by design, since
+    this function should never claim a leg is "Setled" without a positive
+    signal that it is.
+
+    Only touches an order whose query is STILL exactly "Partial Payment
+    Received" (flag_queries()'s own label - see that function's
+    docstring) AND whose Gateway/Payment Provider resolves to a genuine
+    combined label (both a COD and a prepaid component present). Any
+    other query text, or a bare single-gateway label, is left completely
+    untouched - a real, already-specific concern from flag_queries() or
+    refine_queries_with_settlement_status() is never overwritten.
+    """
+    if reco_df is None or reco_df.empty or "query" not in reco_df.columns:
+        return reco_df
+    df = reco_df.copy()
+
+    gateway_col = "Gateway" if "Gateway" in df.columns else (
+        "Payment Provider" if "Payment Provider" in df.columns else None
+    )
+    if gateway_col is None:
+        return df
+
+    is_partial = df["query"] == "Partial Payment Received"
+    if not is_partial.any():
+        return df
+
+    leg_status_by_order = leg_status_by_order or {}
+    gateway = df[gateway_col]
+    order_id = df["order_id"].astype(str)
+
+    def _label(idx):
+        gw = gateway.loc[idx]
+        gw = str(gw).strip() if pd.notna(gw) else ""
+        prepaid_label = prepaid_component_of_gateway_label(gw)
+        if prepaid_label is None:
+            # Not a genuine combined label - a real, still-short partial
+            # payment on a single gateway - leave flag_queries()'s own
+            # text untouched.
+            return None
+        cod_label = cod_component_of_gateway_label(gw)
+        legs = leg_status_by_order.get(order_id.loc[idx], {})
+        cod_word = "Setled" if legs.get("cod_matched") else "Setlment Pending"
+        prepaid_word = "Setled" if legs.get("prepaid_matched") else "Setlment Pending"
+        return f"{cod_label} {cod_word}, {prepaid_label} {prepaid_word}"
+
+    for idx in df.index[is_partial]:
+        new_label = _label(idx)
+        if new_label is not None:
+            df.at[idx, "query"] = new_label
+
+    return df
+
+
+def apply_cod_report_gap_query(reco_df, gateway_configs):
+    """
+    Client-reported 2026-09-04 (round 10, point 1, scenario 3): "COD
+    Delivered but Amount Not Found in COD Report" - an order delivered by
+    a COD-configured courier (Shiprocket/Delhivery/Prozo) that genuinely
+    has NO row at all in that courier's own COD report - not even a
+    not-yet-remitted one (engine.reco.attach_pending_cod_receipts(),
+    called earlier in the pipeline, already rescues that "found but
+    pending remittance" case into a receipt_amount > 0 state, which is
+    why this function only ever sees the genuinely-absent case by the
+    time it runs) - should read a specific, courier-named Query:
+        "{Courier} COD Delivered but amount not reflecting in {Courier} COD Report"
+    (e.g. "Delhivery COD Delivered but amount not reflecting in Delhivery
+    COD Report") rather than the generic "{Courier} COD setlment pending
+    not reflecting" / "COD Delivered Amount not Received" text
+    refine_queries_with_settlement_status() above would otherwise leave in
+    place for it.
+
+    Deliberately conservative, same pattern as every other query-
+    refinement pass in this module: only overrides an order that is
+    STILL one of the generic "nothing received yet, still pending" labels
+    at this point - a real, already-specific concern (a refund, a partial
+    payment, an RTO refund-status question) is left completely untouched.
+
+    Call this right after refine_queries_with_settlement_status() above
+    (same pipeline point, both view call sites) - order relative to
+    attach_receipt_status() doesn't matter, since that function only ever
+    touches "receipt_status", never "query".
+    """
+    df = reco_df.copy()
+    if df is None or df.empty:
+        return df
+    if "delivery_partner" not in df.columns or "final_delivery_status" not in df.columns \
+            or "query" not in df.columns:
+        return df
+
+    cod_couriers = {
+        str(cfg.get("label", "")).strip()[:-len(" COD")].strip()
+        for cfg in (gateway_configs or [])
+        if str(cfg.get("payment_mode", "")).strip().lower() == "cod"
+        and str(cfg.get("label", "")).strip().upper().endswith(" COD")
+    }
+    if not cod_couriers:
+        return df
+
+    generic_labels = set(_COD_SETTLEMENT_PENDING_PHRASES.values())
+    generic_labels |= {f"{p} not reflecting" for p in _COD_SETTLEMENT_PENDING_PHRASES.values()}
+    generic_labels |= {
+        "COD Delivered Amount not Received",
+        "Delivered but amount not received - reason?",
+    }
+
+    receipt = df["receipt_amount"].fillna(0.0) if "receipt_amount" in df.columns else pd.Series(0.0, index=df.index)
+    is_cod_courier_delivered = (
+        (df["final_delivery_status"] == "Delivered")
+        & df["delivery_partner"].astype(str).str.strip().isin(cod_couriers)
+    )
+    mask = is_cod_courier_delivered & (receipt.abs() <= 0.004) & df["query"].isin(generic_labels)
+    if not mask.any():
+        return df
+
+    df.loc[mask, "query"] = df.loc[mask, "delivery_partner"].astype(str).str.strip().apply(
+        lambda partner: f"{partner} COD Delivered but amount not reflecting in {partner} COD Report"
+    )
     return df
 
 
@@ -788,6 +1215,12 @@ def attach_receipt_status(reco_df, recon_status_df):
     already handles "settlement_amount"->"Bank credit" and "query"->
     "Query" - reco_working_cols/the internal reco_df keep the snake_case
     name "receipt_status").
+
+    Client-reported 2026-09-05: also corrects "settlement_amount" ("Bank
+    credit") for the same still-settlement-pending orders this function
+    already identifies for its own "Received Bank settlement pending"
+    label - see the block at the end of this function, right before the
+    return, for the full rule and root-cause story.
 
     Rule derived by reverse-engineering the client's own filled-in values
     against reco_df's other columns (988 orders' worth of examples on the
@@ -896,6 +1329,20 @@ def attach_receipt_status(reco_df, recon_status_df):
 
     def _label(i):
         if in_pending.loc[i]:
+            # 2026-09-04 (round 10, point 2): a COD order engine.reco.
+            # attach_pending_cod_receipts() already rescued - i.e. the
+            # courier's own COD report already confirms the amount, only
+            # the BANK hasn't credited it yet - reads as genuinely
+            # received-but-bank-pending, not "Not Received" (reserved for
+            # an order nothing has been reported collecting at all yet -
+            # e.g. a Payu/Gokwik order the gateway hasn't reported
+            # collecting, or a COD order genuinely absent from its own COD
+            # report even after that rescue - see
+            # apply_cod_report_gap_query() above for that "not reflecting"
+            # case, which is untouched here since receipt_amount is still
+            # 0 for it).
+            if received.loc[i]:
+                return "Received Bank settlement pending"
             return "Not Received"
         st = status_col.loc[i]
         st = str(st).strip() if pd.notna(st) else ""
@@ -941,6 +1388,62 @@ def attach_receipt_status(reco_df, recon_status_df):
         return "Received"
 
     df["receipt_status"] = [_label(i) for i in df.index]
+
+    # Client-reported 2026-09-05: the Shiprocket-COD-pending receipt_amount
+    # rescue above (attach_pending_cod_receipts(), 2026-09-04/round 10)
+    # correctly fixed receipt_amount, but exposed a second bug - the SAME
+    # rescued amount was also leaking into "settlement_amount" ("Bank
+    # credit" at export), even though the bank hasn't actually credited it
+    # yet. Root cause: settlement_amount is a pure arithmetic derivative of
+    # receipt_amount (attach_receipts_and_diff()/attach_pending_cod_
+    # receipts() above: receipt_amount - total_deduction - refund_amount)
+    # with no awareness of whether the money has actually reached the bank
+    # - that was safe before the rescue only because normalize_gateway_df()
+    # 's settled_status_col filter meant receipt_amount was NEVER populated
+    # until a gateway/courier report already showed the money as remitted,
+    # so "has a receipt" and "bank-credited-ish" happened to coincide. The
+    # rescue deliberately broke that coincidence for genuinely-still-
+    # pending COD orders (so receipt_amount/Recipt Remark could correctly
+    # show "received, bank pending" - see the branch just above), without
+    # ever correcting settlement_amount for the same orders.
+    #
+    # Client's own explicit rule (2026-09-05):
+    #   1. COD amount reflecting in the COD report AND credited to bank -
+    #      both receipt_amount and Bank credit.
+    #   2. COD amount reflecting in the COD report but settlement/bank-
+    #      credit pending - receipt_amount only; Bank credit must stay 0.
+    #   3. COD amount not reflecting in the COD report at all - neither
+    #      column (already true unconditionally - receipt_amount was never
+    #      populated for these).
+    #
+    # `in_pending` above (computed from engine.bank.classify_order_bank_
+    # status()'s own "Reconciliation Category" - the exact same signal two
+    # branches above already use to choose "Received Bank settlement
+    # pending" over "Received") is precisely "has the BANK actually
+    # credited this order" == False - not a new heuristic, and not
+    # specific to the Shiprocket-COD rescue: it's the general not-yet-
+    # bank-matched bucket (COD_SETTLEMENT_PENDING / PREPAID_SETTLEMENT_
+    # PENDING / EXCEPTION_MANUAL_REVIEW), so this also correctly keeps Bank
+    # credit at 0 for e.g. a Prepaid order whose settlement row exists but
+    # hasn't been bank-matched yet - a case the pre-existing settlement_
+    # pending_amount-driven zeroing in views/page_reports.py::
+    # _build_workbook() already handled correctly (has_settlement_row True
+    # there), so this doesn't change behaviour for it, just fixes it one
+    # layer earlier and additionally covers the has_settlement_row-False
+    # rescued case that older mechanism couldn't see (recon_status_df's own
+    # has_settlement_row/receipt_amount never learn about the rescue - see
+    # attach_pending_cod_receipts()'s own docstring). That downstream
+    # zeroing step, and engine/reco.py::attach_settlement_pending()/
+    # engine/summary.py::headline_totals()'s own "Settlement pending"
+    # netting, are left exactly as they are - now simply redundant-but-
+    # harmless for every order this function already zeroes here (Bank
+    # credit is already 0, so "zero it again" / "subtract 0 more" are both
+    # no-ops). Nothing about the previously-verified bank-matching/grace-
+    # period/exception classification logic itself changes - only this
+    # already-derived "Bank credit" figure.
+    if "settlement_amount" in df.columns:
+        df["settlement_amount"] = df["settlement_amount"].where(~in_pending, 0.0)
+
     return df
 
 
