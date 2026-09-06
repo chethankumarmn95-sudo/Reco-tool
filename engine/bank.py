@@ -530,6 +530,95 @@ def match_consolidated_to_bank(consolidated_df, bank_ledger_df):
     return df
 
 
+def resolve_split_payment_leg_status(reco_df, consolidated_df, bank_ledger_df, gateway_configs):
+    """
+    2026-09-06 (round 17) - client-reported direct follow-up to round 16's
+    order #30456 Payment Provider fix ("Delhivery COD, PayU"): "query
+    update missing... this case delhivery COD setled but payu setlment
+    pending, query to be asked 'Delhivery COD Setled, payu Setlment
+    Pending'... Settlement Pending & Exceptions (by Payment Gateway)
+    should be update[d]".
+
+    Root cause this needs its OWN function rather than reusing
+    classify_order_bank_status() above: that function computes
+    `bank_matched` as `payments.groupby("order_id")["bank_matched"].any()`
+    - an ORDER-LEVEL aggregate across every one of an order's consolidated_
+    df rows, regardless of which "leg" (a COD-mode gateway vs a Prepaid-
+    mode gateway, per gateway_configs' own payment_mode field) each row
+    belongs to. That's the right call for classify_order_bank_status's own
+    job (one order needs exactly one of six categories), but for a genuine
+    split-payment order it means ONE settled leg (here, Delhivery COD
+    already bank-matched) makes the WHOLE order read as fully resolved,
+    completely masking that the OTHER leg (PayU) has a confirmed
+    transaction that simply hasn't reached the bank yet. Both
+    engine.reco.refine_queries_with_settlement_status()'s Query text and
+    engine.settlement_pending.settlement_pending_summary_by_gateway()'s
+    pending-order filter read that same masked, order-level signal - this
+    function is the shared, per-leg-aware alternative both of those need,
+    built by reusing match_consolidated_to_bank()'s existing ROW-level
+    (non-aggregated) bank_matched output rather than re-deriving it.
+
+    Scope, disclosed: matches each leg's rows against the bank statement
+    by DIRECT UTR ONLY (match_consolidated_to_bank()'s exact-then-suffix
+    matching) - it deliberately does NOT replicate classify_order_bank_
+    status()'s additional COD settlement-BATCH amount/date fallback
+    (build_cod_settlement_batches()/match_batches_to_bank()), which groups
+    an entire COD gateway's rows by (source, settlement date) across the
+    WHOLE ledger and matches the batch total to a bank credit - that
+    logic doesn't decompose cleanly per split-payment order without
+    materially more risk (a batch match is shared across many unrelated
+    orders' rows at once). Practical effect: a split-payment order whose
+    COD leg genuinely settled only via that batch-level fallback (no
+    direct UTR match of its own) will read `cod_matched: False` here even
+    though classify_order_bank_status()'s fuller logic might already
+    treat the order's overall Reconciliation Category as COD_BANK_MATCHED
+    - a disclosed simplification, not silently guessed around.
+
+    Returns: {order_id: {"cod_matched": bool or None, "prepaid_matched":
+    bool or None}} for every order_id in reco_df that has at least one
+    consolidated_df row from either a COD-mode or Prepaid-mode gateway.
+    None for a leg means "no row for this order from that leg's gateways
+    at all" (not the same as False - "row(s) exist, none bank-matched
+    yet"). An order with no rows from either leg at all is omitted
+    entirely.
+    """
+    if reco_df is None or reco_df.empty or consolidated_df is None or consolidated_df.empty:
+        return {}
+
+    gateway_configs = gateway_configs or []
+    cod_labels = {cfg["label"] for cfg in gateway_configs if str(cfg.get("payment_mode", "")).strip().lower() == "cod"}
+    prepaid_labels = {cfg["label"] for cfg in gateway_configs if str(cfg.get("payment_mode", "")).strip().lower() == "prepaid"}
+    if not cod_labels and not prepaid_labels:
+        return {}
+
+    order_ids = set(reco_df["order_id"].astype(str))
+
+    with_bank = match_consolidated_to_bank(consolidated_df, bank_ledger_df)
+    payments = with_bank[~with_bank["is_refund"]].copy()
+    if payments.empty:
+        return {}
+    payments["order_id"] = payments["order_id"].astype(str)
+    payments = payments[payments["order_id"].isin(order_ids)]
+    if payments.empty:
+        return {}
+
+    cod_rows = payments[payments["source"].isin(cod_labels)]
+    prepaid_rows = payments[payments["source"].isin(prepaid_labels)]
+
+    cod_matched_by_order = cod_rows.groupby("order_id")["bank_matched"].any().to_dict()
+    prepaid_matched_by_order = prepaid_rows.groupby("order_id")["bank_matched"].any().to_dict()
+
+    result = {}
+    for oid in order_ids:
+        cod_matched = cod_matched_by_order.get(oid)
+        prepaid_matched = prepaid_matched_by_order.get(oid)
+        if cod_matched is None and prepaid_matched is None:
+            continue
+        result[oid] = {"cod_matched": cod_matched, "prepaid_matched": prepaid_matched}
+
+    return result
+
+
 def matched_order_level_utrs(consolidated_df, bank_ledger_df):
     """
     Set of normalized UTRs already claimed by a direct order-level match
