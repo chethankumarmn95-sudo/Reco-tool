@@ -31,6 +31,7 @@ import streamlit as st
 from engine.consolidator import summarize_receipts_by_order, receipt_detail_by_order
 from engine.reco import (
     attach_settlement_pending, refine_queries_with_settlement_status, attach_receipt_status,
+    apply_cod_report_gap_query, refine_split_payment_queries,
 )
 from engine.summary import month_summary, status_summary, open_queries, headline_totals
 from engine.formatting import (
@@ -44,8 +45,13 @@ from engine.settlement import gateway_settlement_overall, gateway_recon_by_perio
 from engine.bank import (
     build_settlement_ledger, bank_reconciliation_by_utr, build_order_level_utr_detail,
     build_refund_utr_detail, classify_order_bank_status, to_naive_timestamp, to_naive_datetime_series,
+    resolve_split_payment_leg_status,
 )
-from engine.attribution import build_gokwik_payment_provider_map, build_payment_gateway_lookups, attach_payment_columns
+from engine.attribution import (
+    build_gokwik_payment_provider_map, build_payment_gateway_lookups, attach_payment_columns,
+    resolve_cod_courier_label, build_direct_transaction_provider_map, combine_prepaid_and_cod_label,
+    resolve_prepaid_evidence,
+)
 from engine.settlement_pending import (
     build_settlement_pending_report, settlement_pending_summary_by_gateway,
 )
@@ -324,14 +330,13 @@ def _compute_settlement_sections(reco_df, consolidated_df, bank_ledger_df, gatew
         reco_df, consolidated_df, bank_ledger_df, gateway_configs, bank_statement_uploaded,
     )
     receipt_detail_df = receipt_detail_by_order(consolidated_df) if consolidated_df is not None else None
-    settlement_pending_df = build_settlement_pending_report(
-        reco_df, recon_status_df, receipt_detail_df, gateway_configs, receipt_summary_df=receipt_summary,
-    )
-    # settlement_pending_summary_df moved below (client-reported 2026-08-31,
-    # item 1) - it now reads reco_df's own Gateway/query/receipt_status
-    # columns directly (see engine/settlement_pending.py::
-    # settlement_pending_summary_by_gateway()'s own docstring), none of
-    # which exist on reco_df yet at this point in the pipeline.
+    # build_settlement_pending_report() call moved below (client-reported
+    # 2026-09-06, round 18) - its "Payment Gateway" column now prefers
+    # reco_df's own resolved "Payment Provider"/"Gateway" columns (see
+    # engine/settlement_pending.py::build_settlement_pending_report()'s
+    # own docstring for why), neither of which exist on reco_df yet at
+    # this point in the pipeline - same reason settlement_pending_summary_df
+    # was already moved below it (client-reported 2026-08-31, item 1).
 
     # Gokwik is a checkout aggregator, not the rail that actually moves the
     # money - see engine/attribution.py's module docstring. Computed
@@ -346,16 +351,75 @@ def _compute_settlement_sections(reco_df, consolidated_df, bank_ledger_df, gatew
     # column on Reco working - it was built but never wired in. Fixed here:
     # both halves are now used.
     gokwik_provider_map = build_gokwik_payment_provider_map(attribution_frames, attribution_sources_cfg)
+    # 2026-09-04 (round 10): mirrors the same call in views/
+    # page_reconciliation.py - a more direct, single-file alternative to
+    # the two-report join above, used to REFINE its result - see
+    # engine.attribution.build_direct_transaction_provider_map()'s own
+    # docstring (order #28980).
+    direct_txn_provider_map = build_direct_transaction_provider_map(attribution_frames, attribution_sources_cfg)
     order_id_gateway_lookup, utr_gateway_lookup = build_payment_gateway_lookups(consolidated_df, gokwik_provider_map)
     reco_df = reco_df.copy()
     reco_df["Gateway"] = reco_df["order_id"].astype(str).map(order_id_gateway_lookup.to_dict())
+    # Client-reported 2026-09-05 (order #28980's Query text): mirrors the
+    # same overlay in views/page_reconciliation.py - direct_txn_provider_
+    # map already wins for "Payment Provider" below, but "Gateway" here
+    # never got it, so refine_queries_with_settlement_status() (which keys
+    # its Query text off "Gateway") kept the OLD, less-trustworthy
+    # two-report join's answer ("easebuzz Setlment Pending" instead of
+    # "payu Setlment Pending").
+    if direct_txn_provider_map is not None and not direct_txn_provider_map.empty:
+        direct_gateway_by_order = dict(zip(
+            direct_txn_provider_map["order_id"].astype(str), direct_txn_provider_map["payment_provider"],
+        ))
+        direct_gateway_series = reco_df["order_id"].astype(str).map(direct_gateway_by_order)
+        reco_df["Gateway"] = direct_gateway_series.where(direct_gateway_series.notna(), reco_df["Gateway"])
+    # 2026-09-04 (round 9): mirrors the same override in views/
+    # page_reconciliation.py - keeps "Gateway" (which refine_queries_with_
+    # settlement_status() keys its Query text off) consistent with Payment
+    # Provider for a confirmed-COD order - see engine/attribution.py::
+    # resolve_cod_courier_label()'s docstring for the full story.
+    # 2026-09-05 (order #26164): resolve_cod_courier_label() now needs
+    # consolidated_df too - it resolves the courier label primarily from the
+    # actual COD settlement/remittance rows (the same factual signal that
+    # made this order COD in the first place), only falling back to the
+    # older delivery_partner-based guess when that factual signal doesn't
+    # resolve anything. See engine/attribution.py's docstring. Mirrors the
+    # same call in views/page_reconciliation.py.
+    cod_gateway_override = resolve_cod_courier_label(
+        reco_df, recon_status_df, gateway_configs, consolidated_df=consolidated_df,
+    )
+    # 2026-09-04 (round 10): combine, don't overwrite, when this order also
+    # already has a genuine prepaid-processor Gateway value (a real
+    # part-prepaid/part-COD order) - see engine.attribution.combine_
+    # prepaid_and_cod_label()'s own docstring (order #31956). Mirrors the
+    # same call in views/page_reconciliation.py.
+    # 2026-09-05: gated on genuine prepaid evidence (order #27533 and
+    # siblings - a phantom Gokwik-attribution hit, no real money - must be
+    # REPLACED by the COD label, not combined).
+    # 2026-09-06 (round 16, order #30456): now resolve_prepaid_evidence() -
+    # the union of a raw settlement-ledger row AND a confirmed-successful
+    # Gokwik Transaction Report row - not has_genuine_prepaid_receipt()
+    # alone, which missed a genuine part-prepaid/part-COD order whose
+    # prepaid leg's own settlement file hadn't posted yet this run. See
+    # that function's own docstring for the full story. Mirrors the same
+    # call in views/page_reconciliation.py.
+    genuine_prepaid_ids = resolve_prepaid_evidence(
+        reco_df["order_id"], consolidated_df=consolidated_df, gateway_configs=gateway_configs,
+        attribution_frames=attribution_frames, attribution_sources_cfg=attribution_sources_cfg,
+    )
+    reco_df["Gateway"] = combine_prepaid_and_cod_label(
+        reco_df["Gateway"], cod_gateway_override,
+        order_id_series=reco_df["order_id"], has_real_prepaid_receipt=genuine_prepaid_ids,
+    )
     reco_df = attach_payment_columns(
         reco_df, attribution_frames, attribution_sources_cfg, gokwik_provider_map=gokwik_provider_map,
+        direct_txn_provider_map=direct_txn_provider_map,
         # 2026-08-31 (round 8): lets a COD order with no settlement row
         # yet still resolve "<courier> COD" as its Payment Provider - see
         # attach_payment_columns()'s own docstring. Mirrors the same call
         # in views/page_reconciliation.py.
         recon_status_df=recon_status_df, gateway_configs=gateway_configs,
+        consolidated_df=consolidated_df,
     )
     # Client-reported 2026-08-30: mirrors the same call in
     # views/page_reconciliation.py - see
@@ -364,16 +428,63 @@ def _compute_settlement_sections(reco_df, consolidated_df, bank_ledger_df, gatew
     # AND the "Gateway" column just attached.
     reco_df = refine_queries_with_settlement_status(reco_df, recon_status_df)
 
+    # Client-reported 2026-09-06 (round 17): mirrors the same call in
+    # views/page_reconciliation.py - see engine/reco.py::
+    # refine_split_payment_queries()'s own docstring and engine/bank.py::
+    # resolve_split_payment_leg_status()'s docstring for the full
+    # root-cause story.
+    leg_status_by_order = resolve_split_payment_leg_status(
+        reco_df, consolidated_df, bank_ledger_df, gateway_configs,
+    )
+    reco_df = refine_split_payment_queries(reco_df, leg_status_by_order)
+
+    # Client-reported 2026-09-04 (round 10, point 1, scenario 3): mirrors
+    # the same call in views/page_reconciliation.py - see
+    # engine/reco.py::apply_cod_report_gap_query()'s own docstring. Note:
+    # this recompute path has no access to the raw (unfiltered) COD
+    # gateway files a saved period was originally built from, so it can't
+    # re-run attach_pending_cod_receipts() here the way the live
+    # reconciliation run does - an order genuinely rescued into "pending
+    # remittance" there (receipt_amount > 0) keeps that corrected figure
+    # once the period is saved (engine.storage.save_run() persists
+    # reco_df as-is), so this still resolves correctly for any period
+    # saved AFTER this round's fix. A period saved BEFORE it may still
+    # show this courier-named "not reflecting" text for an order that was
+    # actually only pending remittance, not genuinely absent from the
+    # report - re-running and re-saving that period picks up the
+    # distinction, the same disclosed, accepted gap as every other
+    # "wire into the core pipeline" fix in this engine.
+    reco_df = apply_cod_report_gap_query(reco_df, gateway_configs)
+
     # Client-reported 2026-08-30 (item 2): mirrors the same call in
     # views/page_reconciliation.py - see engine/reco.py::
     # attach_receipt_status()'s own docstring.
     reco_df = attach_receipt_status(reco_df, recon_status_df)
 
+    # Client-reported 2026-09-06 (round 18): moved to this point (after
+    # attach_payment_columns()/the Gateway combine step above) so its
+    # "Payment Gateway" column can prefer reco_df's own resolved "Payment
+    # Provider"/"Gateway" - see that function's own docstring for the full
+    # root-cause story (this sheet used to show "Gokwik"/"Unattributed
+    # Prepaid" instead of the Reco working sheet's own "PayU"/"Easebuzz"/
+    # "Delhivery COD"/"Shiprocket COD"). Mirrors the same move in
+    # views/page_reconciliation.py.
+    # period_end_date (2026-09-06, round 19, client-reported item 5): the
+    # Reports page's own "To date" selector (or its fallback - see this
+    # function's own docstring) - so "Days Pending"/"Report Period End
+    # Date" reflect the SELECTED reconciliation period, not today's date.
+    settlement_pending_df = build_settlement_pending_report(
+        reco_df, recon_status_df, receipt_detail_df, gateway_configs, receipt_summary_df=receipt_summary,
+        period_end_date=period_end_date,
+    )
+
     # Client-reported 2026-08-31 (item 1): now built directly off reco_df's
     # own (just-finalised) Gateway/query/receipt_status columns - see
     # engine/settlement_pending.py::settlement_pending_summary_by_gateway()'s
     # own docstring - so it must run after every one of those is in place.
-    settlement_pending_summary_df = settlement_pending_summary_by_gateway(reco_df, gateway_configs)
+    settlement_pending_summary_df = settlement_pending_summary_by_gateway(
+        reco_df, gateway_configs, consolidated_df=consolidated_df, bank_ledger_df=bank_ledger_df,
+    )
 
     utr_bank_reco_df = pd.DataFrame()
     if consolidated_df is not None and not consolidated_df.empty and bank_ledger_df is not None and not bank_ledger_df.empty:
@@ -986,12 +1097,18 @@ def _render_dtc(client_key, config):
         attribution_frames=st.session_state.get("attribution_frames"),
         attribution_sources_cfg=config.get("attribution_sources", []),
     )
-    # Client-reported 2026-08-27: "Net Settlement" must net out money not
-    # yet bank-credited - see engine/reco.py::attach_settlement_pending()
-    # and engine/summary.py::headline_totals(). Reassigns reco_df so the
+    # Client-reported 2026-08-27, rewritten 2026-09-05: "Net Settlement"
+    # must net out money not yet bank-credited, and the Dashboard/
+    # Executive Summary "Settlement Pending Amount" headline figure must
+    # show every still-pending order's exposure (Shiprocket COD/Payu
+    # included, not just Delhivery COD) - see engine/reco.py::
+    # attach_settlement_pending()'s own docstring. Reassigns reco_df so the
     # headline_totals() call below (and the "Reco working" sheet written by
-    # _build_workbook()) both pick up the enriched figure/column.
-    reco_df = attach_settlement_pending(reco_df, settlement_pending_df)
+    # _build_workbook()) both pick up the enriched figure/column. Must run
+    # after _compute_settlement_sections() above (which already calls
+    # attach_receipt_status() internally, so reco_df's receipt_status/
+    # Gateway/query columns are already finalised here).
+    reco_df = attach_settlement_pending(reco_df, config.get("gateways", []))
 
     # Client-reported 2026-08-30 (items 5/6): replaces the old "Payment
     # Gateway Settlement Report" / "Gateway Reconciliation Health"
