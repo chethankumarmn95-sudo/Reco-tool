@@ -90,6 +90,17 @@ _LOGIN_CSS = """
 [data-testid="stToolbar"], [data-testid="stMainMenu"], [data-testid="stAppDeployButton"] { visibility: hidden !important; }
 footer { visibility: hidden !important; }
 
+/* Streamlit keeps its multi-page nav (Dashboard/Upload Data/.../Activity
+   Log) as part of the sidebar shell tied to the current URL, independent
+   of what this script renders - so after logging out from deep inside
+   the tool, that full page list was still showing next to the sign-in
+   card. It has nothing to do with a signed-out visitor, so hide the
+   whole sidebar (and its collapse-arrow control) whenever this login
+   screen is what's being shown. */
+section[data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"] {
+  display: none !important;
+}
+
 [data-testid="stMain"] {
   display: flex;
   align-items: center;
