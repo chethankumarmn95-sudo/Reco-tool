@@ -23,6 +23,7 @@ import pandas as pd
 
 from .bank import to_naive_timestamp
 from .reco import _COD_SETTLEMENT_PENDING_PHRASES
+from .attribution import cod_component_of_gateway_label
 
 UNATTRIBUTED_COD = "Unattributed COD"
 UNATTRIBUTED_PREPAID = "Unattributed Prepaid"
@@ -55,9 +56,25 @@ def expected_gateway_for_order(payment_method_text, delivery_partner, gateway_co
          "Unattributed Prepaid" - so the amount is never silently
          dropped, it just needs a human to confirm which gateway it
          really belongs to.
+
+    2026-09-06 (round 18, client-reported): fixed a latent bug in how a
+    genuinely missing value was blanked here - `payment_method_text or ""`
+    looks like it blanks a missing value, but a NaN FLOAT (pandas' own
+    representation of a missing value after a merge - not Python's None)
+    is truthy, so `nan or ""` evaluates to `nan` itself, not "" - which
+    then stringifies to the literal text "nan" instead of blank. That
+    made `not text` False (the text isn't actually empty, it's "nan"),
+    so a genuinely COD order whose Payment Method came through as a
+    post-merge NaN (not a raw None) skipped the COD-courier-by-
+    delivery_partner branch below entirely and fell all the way to the
+    "Unattributed Prepaid" catch-all - one of the exact failure modes
+    behind the client's own "Unattributed Prepaid" report (see
+    engine/settlement_pending.py::build_settlement_pending_report()'s own
+    docstring). Using pd.isna() (true for both None and NaN) rather than
+    Python truthiness fixes this for both parameters.
     """
-    text = str(payment_method_text or "").strip().lower()
-    partner = str(delivery_partner or "").strip().lower()
+    text = "" if pd.isna(payment_method_text) else str(payment_method_text).strip().lower()
+    partner = "" if pd.isna(delivery_partner) else str(delivery_partner).strip().lower()
 
     prepaid_cfgs = [c for c in gateway_configs if str(c.get("payment_mode", "")).lower() != "cod"]
     cod_cfgs = [c for c in gateway_configs if str(c.get("payment_mode", "")).lower() == "cod"]
@@ -335,7 +352,18 @@ def gateway_settlement_overall(utr_bank_reco_df, reco_df):
 
     deduction_by_gateway = pd.Series(dtype=float)
     if reco_df is not None and len(reco_df) and "Payment Provider" in reco_df.columns and "total_deduction" in reco_df.columns:
-        deduction_by_gateway = reco_df.groupby("Payment Provider")["total_deduction"].sum()
+        # 2026-09-06 (round 16, order #30456): engine.attribution.combine_
+        # prepaid_and_cod_label() can now hand "Payment Provider" a
+        # COMBINED "<courier> COD, <prepaid provider>" label for a genuine
+        # part-prepaid/part-COD order - grouped here under its COD leg
+        # (cod_component_of_gateway_label()) so it lands in the SAME
+        # "Payment Gateway" row 'Bank Reco (UTR-wise)' already uses for
+        # that courier, rather than creating its own orphaned combined-
+        # label row with no matching Settlement Done figure to reconcile
+        # against.
+        deduction_by_gateway = reco_df.groupby(
+            reco_df["Payment Provider"].apply(cod_component_of_gateway_label)
+        )["total_deduction"].sum()
 
     all_labels = sorted(set(grouped.index) | {i for i in deduction_by_gateway.index if pd.notna(i) and str(i).strip()})
     if not all_labels:
@@ -346,7 +374,26 @@ def gateway_settlement_overall(utr_bank_reco_df, reco_df):
     out["PG Deductions Reco period"] = deduction_by_gateway.reindex(all_labels).fillna(0.0)
     out["PG Deductions other period"] = 0.0
     out = out.reset_index().rename(columns={"index": "Payment Gateway"})
-    return out[GATEWAY_SETTLEMENT_OVERALL_COLUMNS].round(2)
+    out = out[GATEWAY_SETTLEMENT_OVERALL_COLUMNS].round(2)
+
+    # 2026-09-06 (round 21, client-reported): drop a gateway row that
+    # contributed genuinely NOTHING this period - every "Settlement Done"/
+    # "Order ID Not Found" figure AND both deduction columns are all
+    # exactly 0. Client's own example: a "Gokwik" row - Gokwik is a
+    # checkout aggregator, not the rail that actually moves money (see
+    # engine/attribution.py's module docstring), so once every order it
+    # touched has been refined to its real downstream processor (easebuzz,
+    # PayU, ...) for BOTH Bank Reco (UTR-wise)'s "Payment Gateway" AND Reco
+    # working's "Payment Provider", a bare "Gokwik" label has nothing left
+    # to sum under it - it's a phantom row, not a genuine gateway with a
+    # real (if small) figure to report. A general "all-zero" filter rather
+    # than hardcoding "Gokwik" specifically, since the same phantom-row
+    # shape could equally appear for any other gateway label that ends up
+    # fully refined away for a given period.
+    all_zero = (out[["Total Settlement Done", "PG Deductions Reco period", "PG Deductions other period"]]
+                .abs().lt(0.01).all(axis=1))
+    out = out.loc[~all_zero].reset_index(drop=True)
+    return out
 
 
 GATEWAY_RECON_RECOPERIOD_COLUMNS = [
@@ -433,7 +480,13 @@ def gateway_recon_by_period(reco_df, gateway_settlement_overall_df, gateway_conf
 
     df = reco_df.copy()
     gw_raw = df["Payment Provider"]
-    gw = gw_raw.astype(str).str.strip()
+    # 2026-09-06 (round 16, order #30456): same COD-leg normalization as
+    # gateway_settlement_overall() above - a COMBINED "<courier> COD,
+    # <prepaid provider>" label groups under its COD leg here too, so this
+    # sheet's own "Received in Bank" lookup (keyed off gateway_settlement_
+    # overall_df's un-combined "Payment Gateway" labels below) actually
+    # finds a match instead of a silently-orphaned all-zero row.
+    gw = gw_raw.apply(cod_component_of_gateway_label).astype(str).str.strip()
     blank_mask = gw_raw.isna() | gw.isin(["", "nan", "None", "#N/A", "NA"])
     df["_gw"] = gw.where(~blank_mask, None)
 
