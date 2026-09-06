@@ -27,6 +27,10 @@ from openpyxl.chart.series import DataPoint
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
+from .settlement_pending import (
+    NOT_REFLECTING_LABEL, COD_REPORT_ABSENT_QUERY_FRAGMENT, BROAD_NOT_REFLECTING_FRAGMENT,
+)
+
 
 def indian_number(value, decimals=0):
     """
@@ -407,6 +411,74 @@ MONEY_COLUMNS = {
     "Recipt", "Bank receipt", "bank_receipt",
 }
 
+# Client-reported 2026-09-06 (round 18): "Bank Date" on the "Bank Reco
+# (UTR-wise)" sheet (engine.bank.bank_reconciliation_by_utr()'s own
+# output column) was showing as "YYYY-MM-DD-HH:mm:ss" - openpyxl's own
+# default number format for a datetime cell (this column was never
+# given an explicit one before) - rather than a clean date. Scoped to
+# just this one column name (confirmed via grep to appear nowhere else
+# in the workbook under this exact header - the Reco working/Order
+# Lookup sheets carry the same value under the differently-named
+# "Payment Date (Bank Date)" column instead, untouched here) rather than
+# reformatting every date column in every sheet, which wasn't asked for
+# and risks changing a format the client hasn't flagged as wrong.
+DATE_COLUMNS = {
+    "Bank Date": "DD-MM-YYYY",
+    # 2026-09-06 (round 19, client-reported item 5): new column on the
+    # "Settlement Pending Detail" sheet only (engine.settlement_pending.
+    # build_settlement_pending_report()) - safe to add here unscoped since
+    # the name is brand new and doesn't collide with any existing sheet.
+    "Report Period End Date": "DD-MM-YYYY",
+    # 2026-09-06 (round 20, client-reported item 1): "Payment Date (Bank
+    # Date)" on the "Reco working" sheet (engine.bank.
+    # build_order_level_utr_detail()'s own column - the same underlying
+    # "Bank Date" value as above, just merged onto reco_df under this
+    # different header) had no explicit number format at all, so it showed
+    # openpyxl's default datetime rendering instead of a clean date. Client
+    # asked specifically for "DD-MMM-YYYY" here (e.g. "06-Sep-2026") - a
+    # different format string than "Bank Date"'s own "DD-MM-YYYY" above, so
+    # kept as its own dict entry rather than reusing that one. Safe to add
+    # unscoped: this exact column (same name, same value, same meaning) is
+    # the only place it appears - also passed through onto the "Order
+    # Lookup" sheet (engine.lookup.build_order_lookup()) where the same
+    # clean format is equally correct, not an unrelated column that would
+    # be wrongly reformatted.
+    "Payment Date (Bank Date)": "DD-MMM-YYYY",
+    # 2026-09-06 (round 20, client-reported items 2/3): "Refund Date" -
+    # same "Reco working"/"Order Lookup" columns, same requested format.
+    # The VALUE bug (wrong/blank dates) is fixed separately at the source
+    # in engine/consolidator.py::normalize_gateway_df()'s _parse_date_col()
+    # (dayfirst=True) - this entry only controls how the (now-correct)
+    # value is displayed.
+    "Refund Date": "DD-MMM-YYYY",
+}
+
+# 2026-09-06 (round 19, client-reported item 4): unlike "Report Period End
+# Date" above, "Order Date" is NOT safe to add to the unscoped DATE_COLUMNS
+# dict - engine.lookup.build_exception_detail() also has a column literally
+# named "Order Date" on the "Exceptions" sheet, and the client only
+# reported this problem on "Settlement Pending Detail" - reformatting the
+# Exceptions sheet's own Order Date too would be an undisclosed, unasked-
+# for change. Keyed by sheet TITLE (ws.title, already available to
+# style_sheet() below) so only the one sheet that actually had its "Order
+# Date" column converted to a real, tz-aware-then-stripped datetime (see
+# that function's own docstring) gets the clean format; the Exceptions
+# sheet's "Order Date" - still reco_df's raw, unconverted "created_at" -
+# is untouched, exactly as before.
+SHEET_SCOPED_DATE_COLUMNS = {
+    "Settlement Pending Detail": {"Order Date": "DD-MM-YYYY"},
+}
+
+# 2026-09-06 (round 19, client-reported item 5): "Days Pending" on the
+# Settlement Pending Detail sheet is now a live formula (Report Period End
+# Date minus Order Date - see build_settlement_pending_report()) whose
+# result is a plain day COUNT, not a currency figure or a date - without an
+# explicit format Excel can sometimes auto-render a date-subtraction
+# formula's result using a date format instead of a number. Name is unique
+# to this one sheet (confirmed via grep), so left unscoped like Bank Date.
+INTEGER_COLUMNS = {
+    "Days Pending": "0",
+}
 
 
 # Sheets at or below this many rows get full per-cell styling (border +
@@ -462,6 +534,7 @@ def style_sheet(ws, df, query_col_name="query", header_color=None):
     if len(df) <= MAX_STYLED_ROWS:
         band_fill = PatternFill(start_color="F7F7F7", end_color="F7F7F7", fill_type="solid")
         body_font = Font(name=FONT_NAME, size=10)
+        sheet_date_columns = SHEET_SCOPED_DATE_COLUMNS.get(ws.title, {})
         for row_idx in range(2, len(df) + 2):
             is_band = (row_idx % 2 == 0)
             for col_idx, col_name in enumerate(df.columns, start=1):
@@ -472,6 +545,12 @@ def style_sheet(ws, df, query_col_name="query", header_color=None):
                     cell.fill = band_fill
                 if col_name in MONEY_COLUMNS:
                     cell.number_format = "#,##0.00"
+                elif col_name in DATE_COLUMNS:
+                    cell.number_format = DATE_COLUMNS[col_name]
+                elif col_name in sheet_date_columns:
+                    cell.number_format = sheet_date_columns[col_name]
+                elif col_name in INTEGER_COLUMNS:
+                    cell.number_format = INTEGER_COLUMNS[col_name]
 
     # Highlight the query/status column wherever it flags an exception -
     # works for the "query" column (Reco working), "Reconciliation status"
@@ -1371,6 +1450,67 @@ def apply_settlement_pending_summary_formulas(writer, reco_working_cols, gateway
 
     cod_labels = {cfg["label"] for cfg in (gateway_configs or []) if str(cfg.get("payment_mode", "")).strip().lower() == "cod"}
     catch_all = "COD Delivered Amount not Received"
+    # 2026-09-04 (round 10): engine.reco.attach_receipt_status() now also
+    # returns "Received Bank settlement pending" (not just "Not Received")
+    # for a still-settlement-pending order whose receipt_amount is ALREADY
+    # populated (a COD order the courier's own report already confirms
+    # collected, just not yet bank-credited - see that function's own
+    # docstring, point 2, and engine.settlement_pending.settlement_
+    # pending_summary_by_gateway()'s matching fix). SUMIFS/COUNTIFS have no
+    # native OR across criteria values, so every formula below is now the
+    # SUM of one term per Recipt Remark value in _PENDING_REMARK_VALUES,
+    # rather than a single term hardcoded to "Not Received" alone - an
+    # order with the new remark would otherwise silently vanish from this
+    # sheet's live Excel totals even though the Python-side summary
+    # (settlement_pending_summary_by_gateway) already counts it.
+    remark_values = ["Not Received", "Received Bank settlement pending"]
+
+    def _sumifs_over_remarks(value_rng, extra_criteria=""):
+        terms = []
+        for rv in remark_values:
+            terms.append("SUMIFS(" + value_rng + "," + remark_rng + ',"' + rv + '"' + extra_criteria + ")")
+        return "+".join(terms)
+
+    def _countifs_over_remarks(extra_criteria=""):
+        terms = []
+        for rv in remark_values:
+            terms.append("COUNTIFS(" + remark_rng + ',"' + rv + '"' + extra_criteria + ")")
+        return "+".join(terms)
+
+    # 2026-09-06 (round 22, client-reported, order #29284): wildcard
+    # criteria matching engine.settlement_pending.NOT_REFLECTING_LABEL's
+    # own COD_REPORT_ABSENT_QUERY_FRAGMENT ("delivered but amount not
+    # reflecting in") - Excel's SUMIFS/COUNTIFS treat "*text*"/"<>*text*"
+    # criteria as contains/does-not-contain, so this reproduces
+    # _is_cod_report_absent_query()'s own substring rule directly off the
+    # Reco working sheet's Query column, off the exact same fragment
+    # constant (never a second, hand-typed copy of the phrase). No Gateway
+    # constraint is needed - this phrasing is only ever produced by
+    # engine.reco.py::apply_cod_report_gap_query() for an order already
+    # confirmed to be a recognised-COD-courier delivery, so matching on
+    # Query text alone can't accidentally pull in an unresolved or Prepaid
+    # order.
+    gap_wildcard = "*" + COD_REPORT_ABSENT_QUERY_FRAGMENT + "*"
+    gap_query_excl = "," + query_rng + ',"<>' + gap_wildcard + '"'
+    # 2026-09-06 (round 22): the BROAD "not reflecting" wildcard (both
+    # phrasings) - used, for a COD courier's OWN row, to separate a
+    # genuinely-reflecting pending order (receipt_amount is meaningful)
+    # from one where NOTHING has reflected anywhere yet (Total is the only
+    # meaningful figure) - mirrors pending_amount_by_order()'s own
+    # is_catch_all_query rule (engine/settlement_pending.py), which this
+    # live-formula rewrite must match or silently disagree with the
+    # already-correct Python-computed Dashboard/Executive Summary total.
+    # Confirmed via a genuine LibreOffice recalc (not just "the formula
+    # parses") while verifying this round's new NOT_REFLECTING_LABEL
+    # split - a courier whose only pending order used this generic
+    # phrasing (e.g. order #30456-style "Setlment pending not reflecting")
+    # was otherwise silently summed via receipt_amount (0), undercounting
+    # against the Python side's Total-based figure - a pre-existing gap in
+    # this live-formula rewrite, not introduced by this round's own
+    # NOT_REFLECTING_LABEL split, but caught by this round's own
+    # verification pass and fixed alongside it rather than left disclosed-
+    # but-broken now that it's been directly observed.
+    broad_wildcard = "*" + BROAD_NOT_REFLECTING_FRAGMENT + "*"
 
     for r in range(2, ws.max_row + 1):
         label = ws.cell(row=r, column=2).value  # Payment Gateway
@@ -1378,20 +1518,39 @@ def apply_settlement_pending_summary_formulas(writer, reco_working_cols, gateway
             continue
         lit = str(label).replace('"', '""')
         if label == catch_all:
-            amount_f = f'=SUMIFS({total_rng},{remark_rng},"Not Received",{query_rng},"{lit}")'
-            count_f = f'=COUNTIFS({remark_rng},"Not Received",{query_rng},"{lit}")'
+            amount_f = "=" + _sumifs_over_remarks(total_rng, "," + query_rng + ',"' + lit + '"')
+            count_f = "=" + _countifs_over_remarks("," + query_rng + ',"' + lit + '"')
+        elif label == NOT_REFLECTING_LABEL:
+            amount_f = "=" + _sumifs_over_remarks(total_rng, "," + query_rng + ',"' + gap_wildcard + '"')
+            count_f = "=" + _countifs_over_remarks("," + query_rng + ',"' + gap_wildcard + '"')
         elif label in cod_labels:
+            # 2026-09-06 (round 22): three terms, a strict partition of
+            # this courier's own pending orders (excluding the new
+            # NOT_REFLECTING_LABEL row's gap-specific orders entirely -
+            # see gap_query_excl above, so an order like #29284 is never
+            # double-counted between this row and that one):
+            #   1. ordinary reflecting (query doesn't match "not
+            #      reflecting" at all) - receipt_amount is meaningful.
+            #   2. the OTHER, broader "not reflecting" phrasing (e.g.
+            #      "Setlment pending not reflecting") - nothing has
+            #      reflected anywhere, so Total is the only meaningful
+            #      figure, exactly like pending_amount_by_order()'s own
+            #      is_catch_all_query rule.
+            #   3. the literal generic catch_all text folded in via the
+            #      Gateway column (pre-existing "fold-in" case) - Total.
             amount_f = (
-                f'=SUMIFS({receipt_rng},{remark_rng},"Not Received",{gw_rng},"{lit}",{query_rng},"<>{catch_all}")'
-                f'+SUMIFS({total_rng},{remark_rng},"Not Received",{gw_rng},"{lit}",{query_rng},"{catch_all}")'
+                "=" + _sumifs_over_remarks(receipt_rng, "," + gw_rng + ',"' + lit + '",' + query_rng + ',"<>' + catch_all + '"' + gap_query_excl + "," + query_rng + ',"<>' + broad_wildcard + '"')
+                + "+" + _sumifs_over_remarks(total_rng, "," + gw_rng + ',"' + lit + '",' + query_rng + ',"<>' + catch_all + '"' + gap_query_excl + "," + query_rng + ',"' + broad_wildcard + '"')
+                + "+" + _sumifs_over_remarks(total_rng, "," + gw_rng + ',"' + lit + '",' + query_rng + ',"' + catch_all + '"')
             )
             count_f = (
-                f'=COUNTIFS({remark_rng},"Not Received",{gw_rng},"{lit}",{query_rng},"<>{catch_all}")'
-                f'+COUNTIFS({remark_rng},"Not Received",{gw_rng},"{lit}",{query_rng},"{catch_all}")'
+                "=" + _countifs_over_remarks("," + gw_rng + ',"' + lit + '",' + query_rng + ',"<>' + catch_all + '"' + gap_query_excl + "," + query_rng + ',"<>' + broad_wildcard + '"')
+                + "+" + _countifs_over_remarks("," + gw_rng + ',"' + lit + '",' + query_rng + ',"<>' + catch_all + '"' + gap_query_excl + "," + query_rng + ',"' + broad_wildcard + '"')
+                + "+" + _countifs_over_remarks("," + gw_rng + ',"' + lit + '",' + query_rng + ',"' + catch_all + '"')
             )
         else:
-            amount_f = f'=SUMIFS({total_rng},{remark_rng},"Not Received",{gw_rng},"{lit}")'
-            count_f = f'=COUNTIFS({remark_rng},"Not Received",{gw_rng},"{lit}")'
+            amount_f = "=" + _sumifs_over_remarks(total_rng, "," + gw_rng + ',"' + lit + '"')
+            count_f = "=" + _countifs_over_remarks("," + gw_rng + ',"' + lit + '"')
         ws.cell(row=r, column=3, value=count_f)
         ws.cell(row=r, column=4, value=amount_f)
 
@@ -1538,12 +1697,22 @@ def add_executive_summary_sheet(writer, key_metrics_cell_map, reco_working_cols,
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         row += 1
 
-    def data_row(values, numfmts=None, band=None):
+    def data_row(values, numfmts=None, band=None, left_cols=None):
+        # left_cols (2026-09-06, round 21, client-reported): 1-indexed
+        # column numbers to left-align in ADDITION to column 1 (already
+        # always left) - every other column defaults to right, correct for
+        # this sheet's usual money/count value columns, but wrong for a
+        # text label column (e.g. "Final Delivery Status", "Query",
+        # "Query / Remark") sharing a row with those. Column 1 needs no
+        # entry here (already left unconditionally); every other caller
+        # that doesn't pass left_cols keeps the exact old behaviour.
         nonlocal row
+        left_cols = left_cols or set()
         for c, val in enumerate(values, start=1):
             cell = ws.cell(row=row, column=c, value=val)
             cell.font = Font(name=FONT_NAME, size=10, color=INK_SECONDARY if c == 1 else NAVY)
-            cell.alignment = Alignment(horizontal="left" if c == 1 else "right", vertical="center", indent=1)
+            horiz = "left" if (c == 1 or c in left_cols) else "right"
+            cell.alignment = Alignment(horizontal=horiz, vertical="center", indent=1)
             if numfmts and c - 1 < len(numfmts) and numfmts[c - 1]:
                 cell.number_format = numfmts[c - 1]
             if band:
@@ -1632,11 +1801,48 @@ def add_executive_summary_sheet(writer, key_metrics_cell_map, reco_working_cols,
     # open_queries_df/settlement_pending_summary_df above - orders whose
     # receipt_status is "Received" or "Refunded" (i.e. already fully
     # reconciled) are excluded, matching MOD's own row list exactly.
-    section_header("2. Where the Unreconciled Gap Sits (by Delivery Status)")
+    # Client-reported 2026-09-05 (points 4/5): header renamed to "...by
+    # Delivery and receipt Status" (this section was always grouped by
+    # Recipt Remark, i.e. receipt status, crossed with Query - the header
+    # text just hadn't caught up), and a new "Payment Provider" column
+    # added next to "Recipt Remark". Since every row here is itself a
+    # GROUPED summary (by Recipt Remark + Query, not one row per order),
+    # Payment Provider is added as a THIRD grouping key rather than a
+    # lookup against an already-aggregated row - that's the only way each
+    # row still resolves to exactly one provider value instead of a
+    # blended/ambiguous one, and it keeps this section's existing
+    # exact-match SUMPRODUCT convention intact (just one more EXACT()
+    # criterion). A blank/unresolved Payment Provider groups under
+    # "Unresolved / #N/A", matching Section 5's own convention for the
+    # same situation below.
+    #
+    # Client-reported 2026-09-05 (follow-up, point 2): a second new column,
+    # "Final Delivery Status", added next to "Recipt Remark" too (i.e.
+    # BEFORE Payment Provider) - same treatment, a fourth grouping key.
+    # final_delivery_status is always a real string on every order (see
+    # engine.reco.attach_delivery_status - it defaults to "Status
+    # Undefined", never blank/NaN), so unlike Payment Provider there's no
+    # "Unresolved / #N/A" relabelling needed here - just fillna as a safety
+    # net for an older saved reco_df that predates this column.
+    #
+    # Both new columns are entirely optional/independent (a reco_df
+    # missing one still gets the other), so the column layout - and the
+    # column letter that holds "Unreconciled Amount" - shifts depending on
+    # which are present. gap_amount_col below is computed to match
+    # whatever was ACTUALLY written, and Section 6's Cashflow Waterfall
+    # (the only other place that reads this section's own layout) uses
+    # that same computed letter instead of a hardcoded one - see that
+    # section's own comment.
+    section_header("2. Where the Unreconciled Gap Sits (by Delivery and receipt Status)")
     recipt_col = _reco_col_letter(reco_working_cols, "receipt_status")
     query_col = _reco_col_letter(reco_working_cols, "query")
     diff_col = _reco_col_letter(reco_working_cols, "diff")
+    provider_col_s2 = _reco_col_letter(reco_working_cols, "Payment Provider")
+    status_col_s2 = _reco_col_letter(reco_working_cols, "final_delivery_status")
     gap_pairs_df = None
+    gap_has_provider = False
+    gap_has_status = False
+    gap_amount_col = None
     if (reco_df is not None and not reco_df.empty and recipt_col and query_col and diff_col
             and "receipt_status" in reco_df.columns and "query" in reco_df.columns):
         # 2026-08-31 (round 6) fix - two client-reported defects, both
@@ -1677,16 +1883,47 @@ def add_executive_summary_sheet(writer, key_metrics_cell_map, reco_working_cols,
         # Python (case-EXACT sum, matching the formula above) before any
         # row is written, rather than hidden after the fact - a
         # zero-amount group simply never gets a row.
+        gap_source_df = reco_df
+        group_keys = ["receipt_status"]
+        gap_has_status = status_col_s2 is not None and "final_delivery_status" in reco_df.columns
+        if gap_has_status:
+            fds = gap_source_df["final_delivery_status"]
+            gap_source_df = gap_source_df.assign(
+                **{"final_delivery_status": fds.fillna("Status Undefined").astype(str).str.strip()}
+            )
+            group_keys.append("final_delivery_status")
+        gap_has_provider = provider_col_s2 is not None and "Payment Provider" in reco_df.columns
+        if gap_has_provider:
+            pv = gap_source_df["Payment Provider"]
+            pv_str = pv.astype(str).str.strip()
+            blank_mask = pv.isna() | pv_str.isin(["", "nan", "None", "#N/A", "NA"])
+            gap_source_df = gap_source_df.assign(
+                **{"Payment Provider": pv_str.where(~blank_mask, "Unresolved / #N/A")}
+            )
+            group_keys.append("Payment Provider")
+        group_keys.append("query")
         gap_pairs_df = (
-            reco_df[~reco_df["receipt_status"].isin(["Received", "Refunded"])]
-            .groupby(["receipt_status", "query"])
+            gap_source_df[~gap_source_df["receipt_status"].isin(["Received", "Refunded"])]
+            .groupby(group_keys)
             .agg(orders=("order_id", "size"), _amount=("diff", "sum"))
             .reset_index()
         )
         gap_pairs_df = gap_pairs_df[gap_pairs_df["_amount"].round(2) != 0]
-        gap_pairs_df = gap_pairs_df.sort_values(["receipt_status", "query"]).reset_index(drop=True)
+        gap_pairs_df = gap_pairs_df.sort_values(group_keys).reset_index(drop=True)
     if gap_pairs_df is not None and not gap_pairs_df.empty:
-        table_header(["Recipt Remark", "Query", "Unreconciled Amount", "Orders", "", "", ""])
+        header_cols = ["Recipt Remark"]
+        if gap_has_status:
+            header_cols.append("Final Delivery Status")
+        if gap_has_provider:
+            header_cols.append("Payment Provider")
+        header_cols += ["Query", "Unreconciled Amount", "Orders"]
+        # gap_amount_col: the column letter "Unreconciled Amount" actually
+        # lands in THIS run, given whichever of the two optional columns
+        # above are present - computed here (not hardcoded) so Section 6's
+        # Cashflow Waterfall below, which sums this exact column, always
+        # points at the right one regardless of layout.
+        gap_amount_col = get_column_letter(header_cols.index("Unreconciled Amount") + 1)
+        table_header(header_cols + [""] * (7 - len(header_cols)))
         gap_start_row = row
         # Data-start row on 'Reco working' isn't always row 2: style_reco_
         # working_sections() inserts an extra group-header band row above
@@ -1703,6 +1940,22 @@ def add_executive_summary_sheet(writer, key_metrics_cell_map, reco_working_cols,
         recon_header_rows = (recon_ws.max_row - len(reco_df)) if recon_ws is not None else 1
         recon_data_start = max(recon_header_rows, 1) + 1
         recon_last_row = max(recon_data_start, recon_data_start + len(reco_df) - 1)
+        # Blank/unresolved Payment Provider cells on 'Reco working' can't
+        # be matched with a single EXACT() literal the way a real label
+        # can - a group relabelled "Unresolved / #N/A" in Python (see
+        # blank_mask above) is matched live against every literal spelling
+        # that maps to it, same convention as Section 5's own "#N/A" row.
+        _BLANK_PROVIDER_LITERALS = ["", "nan", "None", "#N/A", "NA"]
+
+        def _provider_mask(col, lit):
+            if lit == "Unresolved / #N/A":
+                terms = "+".join(
+                    f"EXACT('Reco working'!{col}{recon_data_start}:{col}{recon_last_row},\"{b}\")"
+                    for b in _BLANK_PROVIDER_LITERALS
+                )
+                return f"(({terms})>0)"
+            return f"EXACT('Reco working'!{col}{recon_data_start}:{col}{recon_last_row},\"{lit}\")"
+
         for i, r in gap_pairs_df.iterrows():
             status_lit = str(r["receipt_status"]).replace('"', '""')
             query_lit = str(r["query"]).replace('"', '""')
@@ -1710,15 +1963,39 @@ def add_executive_summary_sheet(writer, key_metrics_cell_map, reco_working_cols,
                 f"EXACT('Reco working'!{recipt_col}{recon_data_start}:{recipt_col}{recon_last_row},\"{status_lit}\")*"
                 f"EXACT('Reco working'!{query_col}{recon_data_start}:{query_col}{recon_last_row},\"{query_lit}\")"
             )
+            if gap_has_status:
+                fds_lit = str(r["final_delivery_status"]).replace('"', '""')
+                exact_mask += (
+                    f"*EXACT('Reco working'!{status_col_s2}{recon_data_start}:{status_col_s2}{recon_last_row},\"{fds_lit}\")"
+                )
+            if gap_has_provider:
+                provider_lit = str(r["Payment Provider"]).replace('"', '""')
+                exact_mask += f"*{_provider_mask(provider_col_s2, provider_lit)}"
             amt_formula = (
                 f"=SUMPRODUCT(({exact_mask})*'Reco working'!{diff_col}{recon_data_start}:{diff_col}{recon_last_row})"
             )
             cnt_formula = f"=SUMPRODUCT(({exact_mask})*1)"
             band = "F7F7F5" if i % 2 else "FFFFFF"
-            data_row([r["receipt_status"], r["query"], amt_formula, cnt_formula, None, None, None],
-                     [None, None, money_fmt, count_fmt], band=band)
+            row_values = [r["receipt_status"]]
+            row_numfmts = [None]
+            if gap_has_status:
+                row_values.append(r["final_delivery_status"])
+                row_numfmts.append(None)
+            if gap_has_provider:
+                row_values.append(r["Payment Provider"])
+                row_numfmts.append(None)
+            row_values += [r["query"], amt_formula, cnt_formula]
+            row_numfmts += [None, money_fmt, count_fmt]
+            row_values += [None] * (7 - len(row_values))
+            # 2026-09-06 (round 21, client-reported): every text/label
+            # column here - Recipt Remark, Final Delivery Status, Payment
+            # Provider (whichever are present), Query - reads left-aligned;
+            # only the trailing "Unreconciled Amount"/"Orders" value
+            # columns stay right. header_cols always ends with exactly
+            # those two, so everything before them is a label column.
+            data_row(row_values, row_numfmts, band=band, left_cols=set(range(1, len(header_cols) - 1)))
         gap_end_row = row - 1
-        _box_border(ws, gap_start_row - 1, 1, gap_end_row, 4)
+        _box_border(ws, gap_start_row - 1, 1, gap_end_row, len(header_cols))
     else:
         gap_start_row = gap_end_row = None
         data_row(["No unreconciled-gap data available for this selection.", None, None, None, None, None, None])
@@ -1728,15 +2005,39 @@ def add_executive_summary_sheet(writer, key_metrics_cell_map, reco_working_cols,
     # 3. Settlement Pending & Exceptions - by Payment Gateway
     # ------------------------------------------------------------------
     section_header("3. Settlement Pending & Exceptions (by Payment Gateway)")
-    if settlement_pending_summary_df is not None and not settlement_pending_summary_df.empty:
+    # Client-reported 2026-09-05: "'COD Delivered Amount not Received'
+    # showing zero value thats correct if value is zero no need to show" -
+    # a Payment Gateway row whose Amount Pending is genuinely 0 (every
+    # order that ONCE sat in this gateway's pending bucket has since been
+    # bank-matched/resolved) still passed straight through before this
+    # fix, exactly like Section 2's own analogous zero-row noise the
+    # client already asked to drop there. Filtered the same way: on the
+    # underlying Python-computed "Amount Pending" figure (rounded, since
+    # apply_settlement_pending_summary_formulas() below only ever REPLACES
+    # the already-written value cells with a live SUMIFS/COUNTIFS formula
+    # reproducing this exact same business rule - see its own docstring -
+    # never changes which rows exist, so a row zero here will still
+    # recalculate to zero live and is safe to drop up front).
+    _pending_rows_df = (
+        settlement_pending_summary_df[settlement_pending_summary_df["Amount Pending"].round(2) != 0]
+        if (settlement_pending_summary_df is not None and not settlement_pending_summary_df.empty
+            and "Amount Pending" in settlement_pending_summary_df.columns)
+        else settlement_pending_summary_df
+    )
+    if _pending_rows_df is not None and not _pending_rows_df.empty:
         # Client-reported 2026-08-30 (item 8/12): dropped the "Exceptions"/
         # "Exception Amount" columns (E/F) to match the client's own
         # reference workbook's Executive Summary exactly - verified
         # against MOD.xlsx directly, only B/C/D (Payment Gateway/Orders
         # Pending/Amount Pending) are referenced there.
         table_header(["Payment Gateway", "Orders Pending", "Amount Pending", "", "", "", ""])
-        for i in range(len(settlement_pending_summary_df)):
-            src_row = i + 2  # Settlement Pending Summary sheet: header row 1, data from row 2
+        for i, src_idx in enumerate(_pending_rows_df.index):
+            # src_row must stay keyed off the ORIGINAL (unfiltered)
+            # settlement_pending_summary_df position, since that is the
+            # exact row order 'Settlement Pending Summary' was written in
+            # (see _build_workbook()) - a dropped zero-value row still
+            # occupies its own row there, so this cannot simply use i+2.
+            src_row = src_idx + 2  # Settlement Pending Summary sheet: header row 1, data from row 2
             band = "F7F7F5" if i % 2 else "FFFFFF"
             data_row([
                 f"='Settlement Pending Summary'!B{src_row}",
@@ -1744,7 +2045,7 @@ def add_executive_summary_sheet(writer, key_metrics_cell_map, reco_working_cols,
                 f"='Settlement Pending Summary'!D{src_row}",
                 None, None, None, None,
             ], [None, count_fmt, money_fmt], band=band)
-        _box_border(ws, row - len(settlement_pending_summary_df) - 1, 1, row - 1, 3)
+        _box_border(ws, row - len(_pending_rows_df) - 1, 1, row - 1, 3)
     else:
         data_row(["No settlement pending / exceptions for this selection.", None, None, None, None, None, None])
     row += 1
@@ -1774,13 +2075,17 @@ def add_executive_summary_sheet(writer, key_metrics_cell_map, reco_working_cols,
             band = "F7F7F5" if k % 2 else "FFFFFF"
             query_text = r["Query"] if "Query" in open_queries_df.columns else r["query"]
             query_lit = str(query_text).replace('"', '""')
+            # 2026-09-06 (round 21, client-reported): "Query / Remark"
+            # (column 2) is a text label sharing a row with three numeric
+            # columns (Rank, Orders, Exposure Amount) - left-align just
+            # this one rather than the numeric columns either side of it.
             data_row([
                 k,
                 query_text,
                 f"=COUNTIF('Reco working'!{query_col}:{query_col},\"{query_lit}\")",
                 f"=SUMIFS('Open queries'!G:G,'Open queries'!A:A,\"{query_lit}\")",
                 None, None, None,
-            ], [count_fmt, None, count_fmt, money_fmt], band=band)
+            ], [count_fmt, None, count_fmt, money_fmt], band=band, left_cols={2})
         _box_border(ws, gap_top_start - 1, 1, row - 1, 4)
     else:
         data_row(["No open queries for this selection.", None, None, None, None, None, None])
@@ -1895,8 +2200,19 @@ def add_executive_summary_sheet(writer, key_metrics_cell_map, reco_working_cols,
     table_header(["Step", "Amount", "", "", "", "", ""])
     waterfall_start = row
     refund_col = _reco_col_letter(reco_working_cols, "refund_amount")
+    # Client-reported 2026-09-05 (point 3): this used to hardcode column
+    # "C" for Section 2's own "Unreconciled Amount" column - correct back
+    # when that section was only ever 4 columns wide (Recipt Remark/Query/
+    # Unreconciled Amount/Orders), but silently wrong the moment Section 2
+    # grew a "Payment Provider" column (and now a "Final Delivery Status"
+    # column too - see that section's own comment) shifted "Unreconciled
+    # Amount" further right. Uses gap_amount_col - computed in Section 2
+    # from the ACTUAL header layout written this run - instead, so this
+    # formula can never drift out of sync with that section again no
+    # matter how many more columns it grows in future.
     gap_sum_formula = (
-        f"=SUM(C{gap_start_row}:C{gap_end_row})" if gap_start_row and gap_end_row else "0"
+        f"=SUM({gap_amount_col}{gap_start_row}:{gap_amount_col}{gap_end_row})"
+        if gap_start_row and gap_end_row and gap_amount_col else "0"
     )
     waterfall_steps = [
         ("Order Value", dash_ref("Gross order value"), True),
