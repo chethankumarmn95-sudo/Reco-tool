@@ -36,14 +36,14 @@ def render():
 
     with col1:
         with st.container(border=True):
-            st.markdown("#### 📊 Reconciliation Tool")
+            st.markdown("#### 📊 Ecom Reco 360")
             st.caption(
                 "Order, payment and settlement matching across every channel — "
                 "Shopify, Amazon, Flipkart, Tata 1mg, First Cry and bank statements."
             )
             st.markdown("")
             if st.button(
-                "Open Reconciliation Tool →",
+                "Open Ecom Reco 360 →",
                 key="open_reco_tool",
                 type="primary",
                 use_container_width=True,
