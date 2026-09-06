@@ -14,8 +14,54 @@ Output shape (one row per gateway transaction):
     order_id | source | txn_type | amount | deduction | is_refund
 """
 
+import re
+
 import pandas as pd
 from .loaders import normalize_order_id, resolve_col_or_raise, resolve_col
+
+_YEAR_FIRST_RE = re.compile(r"^\d{4}[-/]")
+
+
+def _column_looks_year_first(series):
+    """
+    2026-09-06 (round 20, client-reported - Refund Date wrong/blank on the
+    Reco working sheet): True when this date column's own values are
+    already unambiguous ISO-style text starting with a 4-digit year (e.g.
+    "2026-07-05") - dayfirst is NOT safe to force True for these. Verified
+    directly: pandas' dayfirst=True can silently SWAP an already-
+    unambiguous year-first date's month/day too (e.g. "2026-07-05" comes
+    back as "2026-05-07" instead of being left alone) - dayfirst applies to
+    whichever two components are left ambiguous, wherever the year sits,
+    it isn't a no-op just because a 4-digit year is present. False for a
+    day-first "DD-MM-YYYY"-style column (e.g. "01-07-2026", this client's
+    own gateway/COD-partner settlement files - see _parse_date_col()'s own
+    docstring, below) or for a column already holding real datetime
+    objects (a native Excel date cell) - dayfirst is irrelevant to either
+    of those (a datetime object has no ambiguity left to resolve, and a
+    day-first string needs dayfirst=True to read correctly).
+
+    Decided ONCE per column, off a sample of its own non-null values - a
+    real export's own date column is consistently one format, never a mix
+    of day-first and year-first rows.
+    """
+    sample = series.dropna()
+    if sample.empty:
+        return False
+    sample = sample.astype(str).head(20)
+    return bool(sample.str.match(_YEAR_FIRST_RE).any())
+
+
+def _parse_dates_safely(series):
+    """
+    pd.to_datetime() with the correct dayfirst setting for THIS column,
+    decided via _column_looks_year_first() above - see that function's own
+    docstring for why a single blanket dayfirst=True (or dayfirst=False)
+    is not safe across every gateway's date column. Shared by every date
+    column this module parses (settlement dates and refund dates alike),
+    so both use the exact same, once-decided rule.
+    """
+    dayfirst = not _column_looks_year_first(series)
+    return pd.to_datetime(series, errors="coerce", dayfirst=dayfirst)
 
 
 def normalize_gateway_df(df, gateway_cfg):
@@ -103,7 +149,30 @@ def normalize_gateway_df(df, gateway_cfg):
     )
 
     def _parse_date_col(col_name):
-        parsed = pd.to_datetime(df[col_name], errors="coerce")
+        # 2026-09-06, round 20, client-reported - Refund Date wrong/blank
+        # on the Reco working sheet, order #26216/#26225: this client's
+        # COD-partner settlement files use DD-MM-YYYY text dates (every
+        # date example given across this engagement has been day-first).
+        # Plain pd.to_datetime() (dayfirst=False, the old behaviour here)
+        # silently SWAPS day and month whenever both are <=12 (e.g.
+        # "01-07-2026", meant as 1 July, read back as 7 January - order
+        # #26216's exact wrong Refund Date), and returns an outright
+        # unparseable NaT (blank) whenever the day exceeds 12 (e.g.
+        # "25-07-2026" - a valid day, but 25 isn't a valid MONTH - order
+        # #26225's exact blank Refund Date). Both client examples are the
+        # same single root cause, just surfacing differently depending on
+        # whether that date's day component happens to exceed 12.
+        #
+        # _parse_dates_safely() (above) fixes this WITHOUT blindly forcing
+        # dayfirst=True on every gateway, unlike the equivalent bank-
+        # statement fix in engine/bank.py::to_naive_datetime_series() -
+        # verified directly that an unconditional dayfirst=True is not
+        # safe here: it can just as easily swap an ALREADY-unambiguous
+        # ISO/year-first date (e.g. a Razorpay/Gokwik settlement date that
+        # happens to come through as "2026-07-05") the other way, turning
+        # it into "2026-05-07". Decided per-column instead, off that
+        # column's own values - see _column_looks_year_first()'s docstring.
+        parsed = _parse_dates_safely(df[col_name])
         # Normalized to tz-naive right here, at the one place gateway
         # settlement dates get parsed - some gateway exports (e.g.
         # Razorpay's settled_at) include a timezone offset, and once this
@@ -252,6 +321,97 @@ def build_consolidated_receipt(gateway_frames, gateway_configs):
         return pd.DataFrame(columns=["order_id", "source", "amount", "deduction", "is_refund"])
 
     return pd.concat(normalized, ignore_index=True)
+
+
+def build_pending_cod_receipts(gateway_frames, gateway_configs):
+    """
+    Client-reported 2026-09-04 (round 10, point 2): "Shiprocket COD Amount
+    Not Reflecting in receipt_amount" - a COD order the Shiprocket COD
+    Report plainly lists an amount for was still showing receipt_amount
+    == 0 on the Reco working sheet whenever that specific row's own
+    "Remittance Status" isn't yet "Remittance success" - i.e. exactly the
+    rows normalize_gateway_df()'s settled_status_col filter (see its own
+    docstring, 2026-08-25) drops BEFORE they ever reach consolidated_df /
+    summarize_receipts_by_order() - as if they were never in the file at
+    all. That filter exists for a good reason (money not yet remitted to
+    the bank must not be counted as a genuine, bank-matchable settlement
+    row - see engine.bank.classify_order_bank_status's has_settlement_row/
+    grace-period logic, which depends on it staying exactly as-is) and is
+    NOT changed here.
+
+    This is instead an ADDITIVE, separate signal: the exact same not-yet-
+    settled rows normalize_gateway_df() drops, kept here purely so
+    engine.reco.attach_pending_cod_receipts() can recognise "the courier's
+    own report already confirms this money was collected from the
+    customer, only the remittance-to-bank hasn't posted yet" and reflect
+    THAT in receipt_amount/diff (Reco working's own numbers), completely
+    independent of - and without altering - has_settlement_row/
+    Reconciliation Category, which keep being computed from the original,
+    unchanged, settled-only consolidated_df exactly as before.
+
+    Only gateways that declare "settled_status_col" in gateway_configs are
+    considered (today: Shiprocket COD, Prozo COD) - a COD gateway with no
+    such column (Delhivery COD) has nothing to add here, since its own
+    export format never lists a not-yet-remitted row in the first place
+    (every row in a Delhivery COD file already represents money actually
+    remitted).
+
+    Returns order_id | source | amount | deduction - one row per order per
+    COD gateway with at least one not-yet-settled row (summed, in the rare
+    case a single order spans more than one such row). Empty (never None)
+    when no configured COD gateway has both a settled_status_col AND an
+    uploaded file this run.
+    """
+    cols = ["order_id", "source", "amount", "deduction"]
+    if not gateway_frames or not gateway_configs:
+        return pd.DataFrame(columns=cols)
+
+    frames = []
+    for cfg in gateway_configs:
+        settled_status_col_spec = cfg.get("settled_status_col")
+        if not settled_status_col_spec:
+            continue
+        label = cfg["label"]
+        df = gateway_frames.get(label)
+        if df is None or df.empty:
+            continue
+        resolved_status_col = resolve_col(df, settled_status_col_spec)
+        if not resolved_status_col:
+            continue
+        settled_values = {str(v).strip().lower() for v in cfg.get("settled_values", [])}
+        status_text = df[resolved_status_col].astype(str).str.strip().str.lower()
+        pending_df = df[~status_text.isin(settled_values)]
+        if pending_df.empty:
+            continue
+
+        order_col = resolve_col(pending_df, cfg["order_id_col"])
+        amount_col = resolve_col(pending_df, cfg["amount_col"])
+        if not order_col or not amount_col:
+            continue
+        deduction_col_specs = cfg.get("deduction_cols", [])
+        deduction_cols = [c for c in (resolve_col(pending_df, spec) for spec in deduction_col_specs) if c]
+
+        out = pd.DataFrame()
+        out["order_id"] = normalize_order_id(pending_df[order_col])
+        out["source"] = label
+        out["amount"] = pd.to_numeric(pending_df[amount_col], errors="coerce").fillna(0)
+        if deduction_cols:
+            out["deduction"] = sum(
+                pd.to_numeric(pending_df[c], errors="coerce").fillna(0) for c in deduction_cols
+            )
+        else:
+            out["deduction"] = 0.0
+
+        out = out[~_blank_order_id_mask(out["order_id"])]
+        out = out[out["amount"].abs() > 0.004]
+        if len(out):
+            frames.append(out[cols])
+
+    if not frames:
+        return pd.DataFrame(columns=cols)
+    combined = pd.concat(frames, ignore_index=True)
+    grouped = combined.groupby(["order_id", "source"], as_index=False)[["amount", "deduction"]].sum()
+    return grouped
 
 
 def summarize_receipts_by_order(consolidated_df):
