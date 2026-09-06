@@ -343,6 +343,9 @@
       "role": "transaction_report",
       "payment_id_col": "Payment ID",
       "payment_provider_col": "Payment Provider",
+      "order_number_col": ["Platform order number", "Platform Order Number", "Order Number"],
+      "status_col": "Status",
+      "success_values": ["success"],
       "mandatory": false
     }
   ],
