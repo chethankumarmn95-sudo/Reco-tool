@@ -181,6 +181,10 @@ div[data-testid="stTextInputRootElement"] input {
   color: var(--rm-ink) !important;
   padding: 11px 12px !important;
 }
+/* Streamlit shows its own "Press Enter to submit form" hint on any text
+   field inside a form once it's focused - fine for a data-entry page, but
+   not the tone we want on a sign-in card. */
+div[data-testid="InputInstructions"] { display: none !important; }
 
 div[data-testid="stFormSubmitButton"] button {
   width: 100%;
